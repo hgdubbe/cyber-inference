@@ -15,10 +15,22 @@ from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy import select
 
+from cyber_inference.core.database import get_db_session
 from cyber_inference.core.logging import get_logger
+from cyber_inference.models.db_models import Configuration
 
 logger = get_logger(__name__)
+
+CONFIG_DB_CASTS = {
+    "default_context_size": int,
+    "max_context_size": int,
+    "model_idle_timeout": int,
+    "max_loaded_models": int,
+    "max_memory_percent": float,
+    "llama_gpu_layers": int,
+}
 
 
 class Settings(BaseSettings):
@@ -138,3 +150,43 @@ def reload_settings() -> Settings:
     get_settings.cache_clear()
     return get_settings()
 
+
+async def load_db_config_overrides() -> dict[str, object]:
+    """
+    Load runtime configuration overrides from the database.
+    """
+    if not CONFIG_DB_CASTS:
+        return {}
+
+    try:
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Configuration).where(Configuration.key.in_(list(CONFIG_DB_CASTS.keys())))
+            )
+            configs = result.scalars().all()
+    except Exception as exc:
+        logger.warning(f"Could not load config overrides from database: {exc}")
+        return {}
+
+    overrides: dict[str, object] = {}
+    for config in configs:
+        cast = CONFIG_DB_CASTS.get(config.key, str)
+        try:
+            overrides[config.key] = cast(config.value)
+        except (TypeError, ValueError):
+            overrides[config.key] = config.value
+
+    return overrides
+
+
+async def apply_db_config_overrides(settings: Settings) -> dict[str, object]:
+    """
+    Apply database overrides to the in-memory settings instance.
+    """
+    overrides = await load_db_config_overrides()
+    for key, value in overrides.items():
+        if hasattr(settings, key):
+            setattr(settings, key, value)
+    if overrides:
+        logger.info(f"Applied {len(overrides)} config overrides from database")
+    return overrides

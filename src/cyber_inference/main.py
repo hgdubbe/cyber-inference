@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from cyber_inference import __version__
-from cyber_inference.core.config import get_settings
+from cyber_inference.core.config import apply_db_config_overrides, get_settings
 from cyber_inference.core.database import init_database
 from cyber_inference.core.logging import get_logger, setup_logging
 from cyber_inference.services.process_manager import ProcessManager
@@ -60,6 +60,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("[info]Initializing database...[/info]")
     await init_database(settings.database_path)
     logger.info("[success]Database initialized successfully[/success]")
+
+    await apply_db_config_overrides(settings)
 
     # Initialize resource monitor
     logger.info("[info]Starting resource monitor...[/info]")
@@ -204,4 +206,3 @@ def get_auto_loader() -> AutoLoader:
     if auto_loader is None:
         raise RuntimeError("Auto-loader not initialized")
     return auto_loader
-
