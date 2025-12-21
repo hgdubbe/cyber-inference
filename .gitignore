@@ -24,8 +24,8 @@ wheels/
 .env.local
 .env.*.local
 
-# Models
-models/
+# Downloaded models (root level only, not src/cyber_inference/models/)
+/models/
 .venv/
 venv/
 ENV/
