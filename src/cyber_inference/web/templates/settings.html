@@ -14,6 +14,38 @@
         </p>
     </div>
 
+    {% if pending_restart_items %}
+    <div class="cyber-card rounded-xl overflow-hidden border-cyber-yellow/30">
+        <div class="px-6 py-4 border-b border-cyber-yellow/20">
+            <h2 class="font-cyber text-xl font-semibold text-cyber-yellow flex items-center space-x-2">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86l-7.4 12.78A2 2 0 004.6 20h14.8a2 2 0 001.71-3.36l-7.4-12.78a2 2 0 00-3.42 0z" />
+                </svg>
+                <span>RESTART REQUIRED</span>
+            </h2>
+        </div>
+        <div class="p-6 space-y-4">
+            <p class="text-sm font-mono text-gray-300">
+                Saved settings differ from the running configuration. Restart to apply them.
+            </p>
+            <div class="space-y-2 text-xs font-mono text-gray-400">
+                {% for item in pending_restart_items %}
+                <div class="flex items-center justify-between gap-4">
+                    <span>{{ item.label }}</span>
+                    <span class="text-gray-500">
+                        {{ item.current }} -> <span class="text-cyber-yellow">{{ item.saved }}</span>
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+            <button onclick="restartServer()"
+                    class="cyber-btn px-4 py-2 rounded-lg font-mono">
+                Restart Server
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Settings Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Server Settings -->
@@ -385,6 +417,20 @@
         }
     }
 
+    async function restartServer() {
+        if (!confirm('Restart the server to apply saved settings? Active requests will be interrupted.')) return;
+
+        try {
+            await fetch('/admin/shutdown', {
+                method: 'POST',
+            });
+            alert('Server is shutting down. Restart it to apply the saved settings.');
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error restarting server');
+        }
+    }
+
     async function shutdownServer() {
         if (!confirm('Shutdown the server? This will stop all inference.')) return;
 
@@ -399,4 +445,3 @@
     }
 </script>
 {% endblock %}
-
