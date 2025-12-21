@@ -46,7 +46,9 @@ class ChatContentPart(BaseModel):
     """Structured chat content part (text, image, etc.)."""
     type: str = Field(..., description="Content part type (text, image_url, etc.)")
     text: Optional[str] = Field(None, description="Text content")
-    image_url: Optional[dict[str, Any]] = Field(None, description="Image payload (url or base64)")
+    image_url: Optional[Union[str, dict[str, Any]]] = Field(
+        None, description="Image payload (url or base64)"
+    )
 
     model_config = {"extra": "allow"}
 

@@ -60,17 +60,36 @@ def get_auto_loader() -> AutoLoader:
     return _auto_loader
 
 
+def _normalize_content_part(part):
+    if hasattr(part, "model_dump"):
+        data = part.model_dump(exclude_none=True)
+    elif isinstance(part, dict):
+        data = dict(part)
+    else:
+        return part
+
+    if data.get("type") == "image_url":
+        image_value = data.get("image_url")
+        if isinstance(image_value, str):
+            data["image_url"] = {"url": image_value}
+    return data
+
+
 def _serialize_message_content(content):
     if isinstance(content, list):
-        serialized = []
-        for part in content:
-            if hasattr(part, "model_dump"):
-                serialized.append(part.model_dump(exclude_none=True))
-            else:
-                serialized.append(part)
-        return serialized
+        return [_normalize_content_part(part) for part in content]
+
     if hasattr(content, "model_dump"):
-        return content.model_dump(exclude_none=True)
+        data = _normalize_content_part(content)
+        if isinstance(data, dict) and "type" in data:
+            return [data]
+        return data
+
+    if isinstance(content, dict):
+        if "type" in content:
+            return [_normalize_content_part(content)]
+        return content
+
     return content
 
 
