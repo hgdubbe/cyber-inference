@@ -18,7 +18,9 @@ Cyber-Inference is a web GUI management tool for running OpenAI-compatible infer
 
 ## Why Cyber-Inference?
 
-I made this project because I need to deploy inference servers on the edge, for labs and for personal use. I want an easy way to copy paste models from huggingface and have them automatically downloaded and loaded into the inference server. I don't want to management memmory and I just want to have standby inference that is ready to go when I need it (auto model loading and unloading).
+I made this project because I need to deploy inference servers on the edge, for labs and for personal use. I want an easy way to copy paste models from huggingface and have them automatically downloaded and loaded into the inference server llama.cpp. I don't want to management memmory and I just want to have standby inference that is ready to go when I need it (auto model loading and unloading).
+
+The new llama.cpp is amazing, but the models linger and suck up memory and resources and it doesn't support model downloads from the webui. I wrote this project to solve these problems.
 
 Specifically, I made this project for MacOS and NVIDIA Jetson devices.
 
@@ -40,6 +42,17 @@ Specifically, I made this project for MacOS and NVIDIA Jetson devices.
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
+
+## One shot Script
+
+```bash
+# Clone the repository
+git clone https://github.com/ramborogers/cyber-inference.git
+cd cyber-inference
+
+# Run the one shot script
+./start.sh
+```
 
 ### Installation
 
