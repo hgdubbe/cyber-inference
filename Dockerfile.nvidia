@@ -47,7 +47,7 @@ RUN set -eux; \
     PIP_BIN="${VENV_PATH}/bin/pip"; \
     "${PIP_BIN}" install --upgrade pip; \
     "${PIP_BIN}" install --no-cache-dir .; \
-    useradd -m -u 1000 -s /bin/bash cyber; \
+    useradd -m -o -u 1000 -s /bin/bash cyber || true; \
     mkdir -p /app/data /app/models /app/bin /app/data/logs; \
     chown -R cyber:cyber /app /opt/cyber-inference
 
