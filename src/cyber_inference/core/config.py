@@ -176,6 +176,10 @@ async def load_db_config_overrides() -> dict[str, object]:
             overrides[config.key] = cast(config.value)
         except (TypeError, ValueError):
             overrides[config.key] = config.value
+        if config.key == "admin_password":
+            value = overrides[config.key]
+            if isinstance(value, str) and not value.strip():
+                overrides[config.key] = None
 
     return overrides
 
