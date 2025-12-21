@@ -183,7 +183,7 @@ Configure via environment variables or command-line arguments:
 |----------|---------|-------------|
 | `CYBER_INFERENCE_PORT` | 8337 | Server port |
 | `CYBER_INFERENCE_HOST` | 0.0.0.0 | Bind address |
-| `CYBER_INFERENCE_LOG_LEVEL` | DEBUG | Log level |
+| `CYBER_INFERENCE_LOG_LEVEL` | INFO | Log level |
 | `CYBER_INFERENCE_MODELS_DIR` | ./models | Model storage directory |
 | `CYBER_INFERENCE_MAX_LOADED_MODELS` | 3 | Maximum concurrent models |
 | `CYBER_INFERENCE_MODEL_IDLE_TIMEOUT` | 300 | Seconds before unloading idle model |

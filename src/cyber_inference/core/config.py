@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     database_name: str = Field(default="cyber-inference.db", description="Database filename")
 
     # Logging
-    log_level: str = Field(default="DEBUG", description="Log level")
+    log_level: str = Field(default="INFO", description="Log level")
 
     # Model management
     default_context_size: int = Field(default=4096, description="Default context size for models")

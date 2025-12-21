@@ -35,19 +35,19 @@ CYBER_THEME = Theme({
 console = Console(theme=CYBER_THEME)
 
 # Global log level - can be adjusted via config
-_log_level = logging.DEBUG
+_log_level = logging.INFO
 
 # Log directory
 _log_dir: Optional[Path] = None
 
 
-def setup_logging(log_dir: Optional[Path] = None, level: int = logging.DEBUG) -> None:
+def setup_logging(log_dir: Optional[Path] = None, level: int = logging.INFO) -> None:
     """
-    Initialize the logging system with verbose console and file output.
+    Initialize the logging system with console and file output.
 
     Args:
         log_dir: Directory for log files. If None, only console logging is enabled.
-        level: Logging level (default: DEBUG for verbose output)
+        level: Logging level (default: INFO)
     """
     global _log_level, _log_dir
     _log_level = level
