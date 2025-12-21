@@ -18,7 +18,7 @@ Cyber-Inference is a web GUI management tool for running OpenAI-compatible infer
 
 ## Why Cyber-Inference?
 
-I made this project because I need to deploy inference servers on the edge, for labs and for personal use. I want an easy way to copy paste models from huggingface and have them automatically downloaded and loaded into the inference server llama.cpp. I don't want to management memmory and I just want to have standby inference that is ready to go when I need it (auto model loading and unloading).
+I made this project because I need to deploy inference servers on the edge, for labs and for personal use. I want an easy way to copy paste models from huggingface and have them automatically downloaded and loaded into the inference server llama.cpp. I don't want to manage memmory, and I just want to have standby inference that is ready to go when I need it (auto model loading and unloading).
 
 The new llama.cpp is amazing, but the models linger and suck up memory and resources and it doesn't support model downloads from the webui. I wrote this project to solve these problems.
 
