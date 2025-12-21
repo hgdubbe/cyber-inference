@@ -395,7 +395,13 @@
     }
 
     function downloadFromRepo(repoId) {
-        document.getElementById('repoId').value = repoId;
+        // Clear any previous state
+        document.getElementById('repoId').value = repoId.trim();
+        document.getElementById('filename').value = '';
+        document.getElementById('downloadProgress').classList.add('hidden');
+        document.getElementById('progressBar').style.width = '0%';
+        document.getElementById('progressBar').classList.remove('bg-red-500');
+        downloadInProgress = false;
         openDownloadModal();
     }
 
