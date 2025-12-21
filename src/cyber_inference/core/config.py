@@ -186,6 +186,8 @@ async def apply_db_config_overrides(settings: Settings) -> dict[str, object]:
     """
     overrides = await load_db_config_overrides()
     for key, value in overrides.items():
+        if key == "admin_password" and isinstance(value, str) and not value.strip():
+            value = None
         if hasattr(settings, key):
             setattr(settings, key, value)
     if overrides:

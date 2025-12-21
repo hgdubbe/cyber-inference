@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 def is_admin_password_set() -> bool:
     """Return True when admin protection is enabled."""
-    return get_settings().admin_password is not None
+    return bool(get_settings().admin_password)
 
 
 def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
