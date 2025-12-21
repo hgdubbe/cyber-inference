@@ -163,10 +163,16 @@ class ResourceMonitor:
         logger.info("[info]Detecting GPU...[/info]")
 
         # Check for NVIDIA GPU (nvidia-smi)
-        if shutil.which("nvidia-smi"):
+        nvidia_smi = shutil.which("nvidia-smi")
+        if not nvidia_smi:
+            fallback = Path("/usr/bin/nvidia-smi")
+            if fallback.exists():
+                nvidia_smi = str(fallback)
+
+        if nvidia_smi:
             try:
                 result = subprocess.run(
-                    ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                    [nvidia_smi, "--query-gpu=name", "--format=csv,noheader"],
                     capture_output=True,
                     text=True,
                     timeout=5,
@@ -178,6 +184,27 @@ class ResourceMonitor:
                     return
             except Exception as e:
                 logger.debug(f"nvidia-smi check failed: {e}")
+
+        nvidia_proc = Path("/proc/driver/nvidia/gpus")
+        if nvidia_proc.exists():
+            gpu_name = None
+            try:
+                info_files = list(nvidia_proc.glob("*/information"))
+                if info_files:
+                    with info_files[0].open("r") as handle:
+                        for line in handle:
+                            if line.lower().startswith("model:"):
+                                gpu_name = line.split(":", 1)[1].strip()
+                                break
+            except Exception as e:
+                logger.debug(f"NVIDIA /proc check failed: {e}")
+
+            self._gpu_vendor = "nvidia"
+            if gpu_name:
+                logger.info(f"[success]Detected NVIDIA GPU: {gpu_name}[/success]")
+            else:
+                logger.info("[success]Detected NVIDIA GPU via /proc[/success]")
+            return
 
         # Check for Apple Silicon (macOS with Metal)
         if self._platform == "darwin":
@@ -216,6 +243,15 @@ class ResourceMonitor:
 
     async def _get_nvidia_gpu_info(self) -> Optional[GPUInfo]:
         """Get NVIDIA GPU information via nvidia-smi."""
+        def _parse_float(value: str) -> Optional[float]:
+            cleaned = value.strip().lower()
+            if not cleaned or cleaned in {"n/a", "not supported", "unknown"}:
+                return None
+            try:
+                return float(cleaned)
+            except ValueError:
+                return None
+
         try:
             result = subprocess.run(
                 [
@@ -233,13 +269,17 @@ class ResourceMonitor:
 
             parts = result.stdout.strip().split(", ")
             if len(parts) >= 4:
+                total_memory = _parse_float(parts[1])
+                used_memory = _parse_float(parts[2])
+                temperature = _parse_float(parts[3]) if len(parts) > 3 else None
+                utilization = _parse_float(parts[4]) if len(parts) > 4 else None
                 return GPUInfo(
                     name=parts[0],
                     vendor="nvidia",
-                    total_memory_mb=float(parts[1]),
-                    used_memory_mb=float(parts[2]),
-                    temperature=float(parts[3]) if len(parts) > 3 else None,
-                    utilization_percent=float(parts[4]) if len(parts) > 4 else None,
+                    total_memory_mb=total_memory or 0.0,
+                    used_memory_mb=used_memory or 0.0,
+                    temperature=temperature,
+                    utilization_percent=utilization,
                 )
         except Exception as e:
             logger.debug(f"Failed to get NVIDIA GPU info: {e}")
@@ -399,4 +439,3 @@ class ResourceMonitor:
     def has_gpu(self) -> bool:
         """Check if a GPU is available."""
         return self._gpu_vendor is not None
-

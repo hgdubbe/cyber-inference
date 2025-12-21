@@ -72,20 +72,30 @@ class LlamaInstaller:
         logger.info("[info]Detecting GPU backend...[/info]")
 
         # Check for NVIDIA CUDA
-        if shutil.which("nvidia-smi"):
+        nvidia_smi = shutil.which("nvidia-smi")
+        if not nvidia_smi:
+            fallback = Path("/usr/bin/nvidia-smi")
+            if fallback.exists():
+                nvidia_smi = str(fallback)
+
+        if nvidia_smi:
             try:
                 result = subprocess.run(
-                    ["nvidia-smi", "-L"],
+                    [nvidia_smi, "--query-gpu=name", "--format=csv,noheader"],
                     capture_output=True,
                     text=True,
                     timeout=5,
                 )
-                if result.returncode == 0 and "GPU" in result.stdout:
+                if result.returncode == 0 and result.stdout.strip():
                     logger.info("[success]Detected NVIDIA GPU - using CUDA backend[/success]")
                     self._gpu_backend = "cuda"
                     return "cuda"
             except Exception as e:
                 logger.debug(f"CUDA detection failed: {e}")
+        elif Path("/proc/driver/nvidia/gpus").exists():
+            logger.info("[success]Detected NVIDIA driver via /proc - using CUDA backend[/success]")
+            self._gpu_backend = "cuda"
+            return "cuda"
 
         # Check for Apple Metal (macOS)
         if self._platform == "darwin":
@@ -460,4 +470,3 @@ class LlamaInstaller:
         if self._platform == "windows":
             llama_server_path = self.bin_dir / "llama-server.exe"
         return llama_server_path
-
