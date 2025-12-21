@@ -39,7 +39,7 @@ Cyber-Inference is a web GUI management tool for running OpenAI-compatible infer
 
 ```bash
 # Clone the repository
-git clone https://github.com/matthewrogers/cyber-inference.git
+git clone https://github.com/ramborogers/cyber-inference.git
 cd cyber-inference
 
 # Install with uv (recommended)
@@ -303,7 +303,7 @@ GPU GPLv3 Licensed.
 
 ### Connect With Me 🤝
 
-[![GitHub](https://img.shields.io/badge/GitHub-matthewrogers-181717?style=for-the-badge&logo=github)](https://github.com/ramborogers)
+[![GitHub](https://img.shields.io/badge/GitHub-ramborogers-181717?style=for-the-badge&logo=github)](https://github.com/ramborogers)
 [![Twitter](https://img.shields.io/badge/Twitter-@matthewrogers-1DA1F2?style=for-the-badge&logo=twitter)](https://x.com/matthewrogers)
 [![Website](https://img.shields.io/badge/Web-matthewrogers.org-00ADD8?style=for-the-badge&logo=google-chrome)](https://matthewrogers.org)
 
