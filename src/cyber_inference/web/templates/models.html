@@ -428,7 +428,7 @@
         }
 
         try {
-            const response = await fetch('/admin/models/download', {
+            const response = await adminFetch('/admin/models/download', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -479,7 +479,7 @@
         btn.disabled = true;
 
         try {
-            const response = await fetch(`/admin/models/${encodeURIComponent(modelName)}/load`, {
+            const response = await adminFetch(`/admin/models/${encodeURIComponent(modelName)}/load`, {
                 method: 'POST',
             });
 
@@ -509,7 +509,7 @@
         if (!confirm(`Unload model "${modelName}"?`)) return;
 
         try {
-            const response = await fetch(`/admin/models/${encodeURIComponent(modelName)}/unload`, {
+            const response = await adminFetch(`/admin/models/${encodeURIComponent(modelName)}/unload`, {
                 method: 'POST',
             });
 
@@ -528,7 +528,7 @@
         if (!confirm(`Delete model "${modelName}"? This cannot be undone.`)) return;
 
         try {
-            const response = await fetch(`/admin/models/${encodeURIComponent(modelName)}`, {
+            const response = await adminFetch(`/admin/models/${encodeURIComponent(modelName)}`, {
                 method: 'DELETE',
             });
 

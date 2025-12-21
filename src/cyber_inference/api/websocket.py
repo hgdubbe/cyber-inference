@@ -17,6 +17,7 @@ from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from cyber_inference.core.auth import extract_bearer_token, is_admin_password_set, verify_admin_token_value
 from cyber_inference.core.logging import get_logger
 
 # Regex to strip Rich markup tags like [info], [/info], [highlight], etc.
@@ -32,6 +33,20 @@ _log_buffer: deque = deque(maxlen=1000)
 # Connected WebSocket clients
 _log_clients: list[WebSocket] = []
 _status_clients: list[WebSocket] = []
+
+
+async def _require_admin_websocket(websocket: WebSocket) -> bool:
+    if not is_admin_password_set():
+        return True
+
+    token = websocket.cookies.get("admin_token") or extract_bearer_token(
+        websocket.headers.get("authorization")
+    )
+    if token and verify_admin_token_value(token):
+        return True
+
+    await websocket.close(code=1008)
+    return False
 
 
 class WebSocketLogHandler(logging.Handler):
@@ -102,6 +117,9 @@ async def websocket_logs(websocket: WebSocket) -> None:
 
     Clients connect here to receive log messages as they're generated.
     """
+    if not await _require_admin_websocket(websocket):
+        return
+
     await websocket.accept()
     logger.info("[info]WebSocket client connected to /ws/logs[/info]")
 
@@ -148,6 +166,9 @@ async def websocket_status(websocket: WebSocket) -> None:
     - Model load/unload events
     - Health status
     """
+    if not await _require_admin_websocket(websocket):
+        return
+
     await websocket.accept()
     logger.info("[info]WebSocket client connected to /ws/status[/info]")
 
@@ -261,4 +282,3 @@ async def notify_download_progress(
         event["error"] = error
 
     await _broadcast_status(event)
-

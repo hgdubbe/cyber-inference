@@ -30,6 +30,7 @@ CONFIG_DB_CASTS = {
     "max_loaded_models": int,
     "max_memory_percent": float,
     "llama_gpu_layers": int,
+    "admin_password": str,
 }
 
 

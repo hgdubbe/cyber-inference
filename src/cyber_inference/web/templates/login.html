@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Login | {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto space-y-6">
+    <div class="text-center">
+        <h1 class="font-cyber text-3xl font-bold text-cyber-neon neon-text-subtle">
+            ADMIN ACCESS
+        </h1>
+        <p class="mt-1 text-gray-400 font-mono text-sm">
+            // Authenticate to access system controls
+        </p>
+    </div>
+
+    <div class="cyber-card rounded-xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-cyber-neon/20">
+            <h2 class="font-cyber text-xl font-semibold text-cyber-neon flex items-center space-x-2">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <span>SECURE LOGIN</span>
+            </h2>
+        </div>
+        <div class="p-6 space-y-4">
+            <form id="loginForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-mono text-gray-400 mb-2">Admin Password</label>
+                    <input type="password" id="loginPassword" autocomplete="current-password"
+                           class="cyber-input w-full px-4 py-2 rounded-lg font-mono"
+                           placeholder="Enter admin password" required>
+                </div>
+                <div id="loginError" class="hidden text-xs font-mono text-cyber-red"></div>
+                <button type="submit" id="loginBtn"
+                        class="cyber-btn w-full px-6 py-3 rounded-lg font-mono inline-flex items-center justify-center space-x-2">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Authenticate</span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="text-center text-xs font-mono text-gray-500">
+        Access is restricted when admin protection is enabled.
+    </div>
+</div>
+
+<div id="loginMeta" data-next-url="{{ next_url|e }}" data-error="{{ error|e }}"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const loginForm = document.getElementById('loginForm');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginError = document.getElementById('loginError');
+    const loginMeta = document.getElementById('loginMeta');
+    const nextUrl = loginMeta?.dataset.nextUrl || '/';
+    const errorCode = loginMeta?.dataset.error || '';
+
+    function showLoginError(message) {
+        loginError.textContent = message;
+        loginError.classList.remove('hidden');
+    }
+
+    if (errorCode === 'invalid') {
+        showLoginError('Session expired or invalid. Please login again.');
+    }
+
+    loginForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        loginError.classList.add('hidden');
+
+        const password = document.getElementById('loginPassword').value.trim();
+        if (!password) {
+            showLoginError('Please enter the admin password.');
+            return;
+        }
+
+        loginBtn.disabled = true;
+        const originalText = loginBtn.innerHTML;
+        loginBtn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Authenticating...</span>';
+
+        try {
+            const response = await fetch('/admin/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ password }),
+            });
+
+            if (!response.ok) {
+                showLoginError(`Login failed (HTTP ${response.status}).`);
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = originalText;
+                return;
+            }
+
+            const data = await response.json();
+            if (data?.access_token) {
+                if (window.setAdminToken) {
+                    window.setAdminToken(data.access_token);
+                } else {
+                    localStorage.setItem('admin_token', data.access_token);
+                    document.cookie = `admin_token=${encodeURIComponent(data.access_token)}; Path=/; SameSite=Lax; Max-Age=86400`;
+                }
+            }
+
+            window.location.href = nextUrl;
+        } catch (error) {
+            console.error('Login error:', error);
+            showLoginError('Unable to reach the server. Please try again.');
+        } finally {
+            loginBtn.disabled = false;
+            loginBtn.innerHTML = originalText;
+        }
+    });
+</script>
+{% endblock %}

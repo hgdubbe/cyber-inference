@@ -14,13 +14,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from cyber_inference import __version__
+from cyber_inference.core.auth import extract_bearer_token, verify_admin_token_value
 from cyber_inference.core.config import apply_db_config_overrides, get_settings
 from cyber_inference.core.database import init_database
 from cyber_inference.core.logging import get_logger, setup_logging
@@ -175,10 +176,19 @@ app.include_router(web_router, tags=["Web GUI"])
 
 
 @app.get("/health")
-async def health_check() -> dict:
+async def health_check(request: Request) -> dict:
     """
     Health check endpoint for monitoring.
     """
+    token = request.cookies.get("admin_token") or extract_bearer_token(
+        request.headers.get("authorization")
+    )
+    if not verify_admin_token_value(token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
     logger.debug("Health check requested")
     return {
         "status": "healthy",

@@ -12,11 +12,13 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from urllib.parse import quote
 
 from cyber_inference import __version__
-from cyber_inference.core.config import CONFIG_DB_CASTS, get_settings, load_db_config_overrides
+from cyber_inference.core.auth import extract_bearer_token, verify_admin_token_value
+from cyber_inference.core.config import get_settings, load_db_config_overrides
 from cyber_inference.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -34,6 +36,7 @@ _CONFIG_UI_LABELS = {
     "max_loaded_models": "Max Loaded Models",
     "max_memory_percent": "Max Memory Usage (%)",
     "llama_gpu_layers": "GPU Layers",
+    "admin_password": "Admin Password",
 }
 
 
@@ -49,6 +52,37 @@ def _template_context(request: Request, **kwargs) -> dict:
     }
 
 
+def _build_next_url(request: Request) -> str:
+    path = request.url.path
+    if request.url.query:
+        path = f"{path}?{request.url.query}"
+    return path
+
+
+async def _require_admin(request: Request) -> RedirectResponse | None:
+    settings = get_settings()
+    if not settings.admin_password:
+        return None
+
+    token = request.cookies.get("admin_token") or extract_bearer_token(
+        request.headers.get("authorization")
+    )
+    invalid_token = False
+    if token:
+        if verify_admin_token_value(token):
+            return None
+        invalid_token = True
+
+    next_url = quote(_build_next_url(request))
+    error_param = "&error=invalid" if invalid_token else ""
+    response = RedirectResponse(
+        url=f"/login?next={next_url}{error_param}",
+        status_code=303,
+    )
+    response.delete_cookie("admin_token")
+    return response
+
+
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request) -> HTMLResponse:
     """
@@ -61,6 +95,10 @@ async def dashboard(request: Request) -> HTMLResponse:
     - Recent activity
     """
     logger.debug("GET / - Dashboard")
+
+    redirect = await _require_admin(request)
+    if redirect:
+        return redirect
 
     if not templates:
         return HTMLResponse(
@@ -118,6 +156,10 @@ async def models_page(request: Request) -> HTMLResponse:
     """
     logger.debug("GET /models - Models page")
 
+    redirect = await _require_admin(request)
+    if redirect:
+        return redirect
+
     if not templates:
         return HTMLResponse(content="Templates not found", status_code=500)
 
@@ -165,6 +207,10 @@ async def settings_page(request: Request) -> HTMLResponse:
     """
     logger.debug("GET /settings - Settings page")
 
+    redirect = await _require_admin(request)
+    if redirect:
+        return redirect
+
     if not templates:
         return HTMLResponse(content="Templates not found", status_code=500)
 
@@ -180,17 +226,41 @@ async def settings_page(request: Request) -> HTMLResponse:
         "llama_gpu_layers": settings.llama_gpu_layers,
     }
     saved_settings = dict(runtime_settings)
-    saved_settings.update(overrides)
+    for key, value in overrides.items():
+        if key in saved_settings:
+            saved_settings[key] = value
 
     pending_restart_items = []
-    for key in CONFIG_DB_CASTS.keys():
-        if key in overrides and overrides[key] != runtime_settings.get(key):
+    for key, saved_value in overrides.items():
+        if key == "admin_password":
+            current_value = settings.admin_password
+            if saved_value == current_value:
+                continue
+            current_display = "set" if current_value else "not set"
+            if saved_value and current_value:
+                saved_display = "updated"
+            else:
+                saved_display = "set" if saved_value else "not set"
             pending_restart_items.append(
                 {
                     "key": key,
                     "label": _CONFIG_UI_LABELS.get(key, key.replace("_", " ").title()),
-                    "current": runtime_settings.get(key),
-                    "saved": overrides[key],
+                    "current": current_display,
+                    "saved": saved_display,
+                }
+            )
+            continue
+
+        current_value = runtime_settings.get(key)
+        if current_value is None:
+            continue
+        if saved_value != current_value:
+            pending_restart_items.append(
+                {
+                    "key": key,
+                    "label": _CONFIG_UI_LABELS.get(key, key.replace("_", " ").title()),
+                    "current": current_value,
+                    "saved": saved_value,
                 }
             )
 
@@ -226,6 +296,10 @@ async def logs_page(request: Request) -> HTMLResponse:
     """
     logger.debug("GET /logs - Logs page")
 
+    redirect = await _require_admin(request)
+    if redirect:
+        return redirect
+
     if not templates:
         return HTMLResponse(content="Templates not found", status_code=500)
 
@@ -244,6 +318,10 @@ async def api_docs_page(request: Request) -> HTMLResponse:
     """
     logger.debug("GET /api-docs")
 
+    redirect = await _require_admin(request)
+    if redirect:
+        return redirect
+
     if not templates:
         return HTMLResponse(content="Templates not found", status_code=500)
 
@@ -253,3 +331,32 @@ async def api_docs_page(request: Request) -> HTMLResponse:
     )
 
     return templates.TemplateResponse("api_docs.html", context)
+
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request) -> HTMLResponse:
+    """
+    Admin login page.
+    """
+    logger.debug("GET /login - Login page")
+
+    settings = get_settings()
+    if not settings.admin_password:
+        return RedirectResponse(url="/", status_code=303)
+
+    token = request.cookies.get("admin_token")
+    if token and verify_admin_token_value(token):
+        next_url = request.query_params.get("next") or "/"
+        return RedirectResponse(url=next_url, status_code=303)
+
+    if not templates:
+        return HTMLResponse(content="Templates not found", status_code=500)
+
+    context = _template_context(
+        request,
+        page="login",
+        next_url=request.query_params.get("next") or "/",
+        error=request.query_params.get("error"),
+    )
+
+    return templates.TemplateResponse("login.html", context)

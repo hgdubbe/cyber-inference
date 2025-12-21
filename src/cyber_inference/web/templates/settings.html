@@ -475,7 +475,9 @@
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
             try {
-                const response = await fetch('/health', { cache: 'no-store' });
+                const token = window.getAdminToken ? window.getAdminToken() : null;
+                const headers = token ? { Authorization: `Bearer ${token}` } : {};
+                const response = await fetch('/health', { cache: 'no-store', headers });
                 if (response.ok) {
                     return true;
                 }
@@ -555,7 +557,7 @@
             // Save each setting
             const results = await Promise.allSettled(
                 settings.map(setting =>
-                    fetch(`/admin/config/${setting.key}`, {
+                    adminFetch(`/admin/config/${setting.key}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
@@ -595,17 +597,57 @@
     }
 
     async function setAdminPassword() {
-        const password = document.getElementById('adminPassword').value;
+        const passwordInput = document.getElementById('adminPassword');
+        const password = passwordInput.value.trim();
         if (!password) {
             showToast({ tone: 'warning', message: 'Please enter a password.' });
             return;
         }
 
-        // Note: This would typically call an endpoint to set the password
-        showToast({
-            tone: 'info',
-            message: 'Password setting requires a server restart with CYBER_INFERENCE_ADMIN_PASSWORD.',
+        const confirmed = await confirmAction({
+            tone: 'warning',
+            title: 'Set Admin Password',
+            message: 'Set a new admin password? A restart is required to apply it.',
+            confirmText: 'Save Password',
+            cancelText: 'Cancel',
         });
+        if (!confirmed) return;
+
+        try {
+            const response = await adminFetch('/admin/config/admin_password', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ value: password }),
+            });
+
+            if (!response.ok) {
+                showToast({ tone: 'danger', message: `Failed to set admin password (HTTP ${response.status}).` });
+                return;
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showToast({ tone: 'danger', message: 'Error setting admin password.' });
+            return;
+        }
+
+        passwordInput.value = '';
+        showToast({ tone: 'success', message: 'Admin password saved. Restart required.' });
+
+        const restartNow = await confirmAction({
+            tone: 'warning',
+            title: 'Restart Required',
+            message: 'Restart the server now to enable admin authentication?',
+            confirmText: 'Restart Now',
+            cancelText: 'Later',
+        });
+
+        if (restartNow) {
+            await restartServer({ skipConfirm: true });
+        } else {
+            showToast({ tone: 'info', message: 'Restart later to apply the admin password.' });
+        }
     }
 
     async function unloadAllModels() {
@@ -619,11 +661,11 @@
         if (!confirmed) return;
 
         try {
-            const response = await fetch('/admin/sessions');
+            const response = await adminFetch('/admin/sessions');
             const sessions = await response.json();
 
             for (const session of sessions) {
-                await fetch(`/admin/models/${session.model_name}/unload`, {
+                await adminFetch(`/admin/models/${session.model_name}/unload`, {
                     method: 'POST',
                 });
             }
@@ -635,15 +677,18 @@
         }
     }
 
-    async function restartServer() {
-        const confirmed = await confirmAction({
-            tone: 'warning',
-            title: 'Restart Server',
-            message: 'Restart the server to apply saved settings? Active requests will be interrupted.',
-            confirmText: 'Restart',
-            cancelText: 'Cancel',
-        });
-        if (!confirmed) return;
+    async function restartServer(options = {}) {
+        const { skipConfirm = false } = options;
+        if (!skipConfirm) {
+            const confirmed = await confirmAction({
+                tone: 'warning',
+                title: 'Restart Server',
+                message: 'Restart the server to apply saved settings? Active requests will be interrupted.',
+                confirmText: 'Restart',
+                cancelText: 'Cancel',
+            });
+            if (!confirmed) return;
+        }
 
         try {
             openModal({
@@ -654,7 +699,7 @@
                 showCancel: false,
                 statusText: 'Waiting 5 seconds before reconnect...',
             });
-            await fetch('/admin/shutdown', {
+            await adminFetch('/admin/shutdown', {
                 method: 'POST',
             });
         } catch (error) {
@@ -694,7 +739,7 @@
         if (!confirmed) return;
 
         try {
-            await fetch('/admin/shutdown', {
+            await adminFetch('/admin/shutdown', {
                 method: 'POST',
             });
             showToast({ tone: 'warning', message: 'Server is shutting down...' });

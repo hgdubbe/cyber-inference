@@ -15,10 +15,11 @@ from typing import Optional
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
+from jose import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cyber_inference.core.auth import verify_admin_token_value
 from cyber_inference.core.config import get_settings
 from cyber_inference.core.database import get_db, get_db_session
 from cyber_inference.core.logging import get_logger
@@ -71,28 +72,15 @@ async def verify_admin_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    try:
-        payload = jwt.decode(
-            credentials.credentials,
-            settings.jwt_secret,
-            algorithms=[settings.jwt_algorithm],
-        )
-
-        if payload.get("type") != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid token type",
-            )
-
-        return True
-
-    except JWTError as e:
-        logger.warning(f"[warning]Invalid admin token: {e}[/warning]")
+    if not verify_admin_token_value(credentials.credentials):
+        logger.warning("[warning]Invalid admin token[/warning]")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    return True
 
 
 @router.post("/login")
@@ -530,4 +518,3 @@ async def shutdown_server(
     asyncio.create_task(delayed_shutdown())
 
     return {"status": "shutting_down"}
-

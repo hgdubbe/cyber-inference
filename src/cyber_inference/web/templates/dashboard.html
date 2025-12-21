@@ -251,7 +251,7 @@
         if (!confirm(`Unload model "${modelName}"?`)) return;
 
         try {
-            const response = await fetch(`/admin/models/${modelName}/unload`, {
+            const response = await adminFetch(`/admin/models/${modelName}/unload`, {
                 method: 'POST',
             });
 
