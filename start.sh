@@ -3,6 +3,7 @@
 # Cyber-Inference Start Script
 #
 # This script verifies prerequisites and starts the Cyber-Inference server.
+# It will auto-restart the server if it exits (use Ctrl+C to stop).
 #
 # Usage:
 #     ./start.sh
@@ -122,6 +123,16 @@ echo ""
 info "Starting Cyber-Inference server..."
 echo ""
 
-# Run the server
-uv run cyber-inference serve
+# Auto-restart loop
+RESTART_DELAY="${CYBER_INFERENCE_RESTART_DELAY:-2}"
 
+while true; do
+    exit_code=0
+    uv run cyber-inference serve || exit_code=$?
+    if [ "$exit_code" -eq 0 ]; then
+        warning "Server exited cleanly. Restarting in ${RESTART_DELAY}s..."
+    else
+        warning "Server exited with code ${exit_code}. Restarting in ${RESTART_DELAY}s..."
+    fi
+    sleep "$RESTART_DELAY"
+done
