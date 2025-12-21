@@ -10,6 +10,7 @@ Manages:
 """
 
 import asyncio
+import re
 import signal
 import socket
 from dataclasses import dataclass, field
@@ -32,6 +33,7 @@ class LlamaProcess:
     """Represents a running llama-server process."""
     model_name: str
     model_path: Path
+    mmproj_path: Optional[Path] = None
     port: int
     pid: Optional[int] = None
     process: Optional[asyncio.subprocess.Process] = None
@@ -162,6 +164,41 @@ class ProcessManager:
             self._port_allocations.discard(port)
             logger.debug(f"Released port: {port}")
 
+    def _find_mmproj(self, model_path: Path) -> Optional[Path]:
+        mmproj_files = sorted(
+            [p for p in model_path.parent.glob("*.gguf") if "mmproj" in p.name.lower()]
+        )
+        if not mmproj_files:
+            return None
+
+        exact = model_path.parent / f"mmproj-{model_path.stem}.gguf"
+        if exact.exists():
+            return exact
+
+        base_name = re.sub(r"(?i)-q\d+.*$", "", model_path.stem)
+        prefix = f"mmproj-{base_name}".lower()
+
+        prefixed = [p for p in mmproj_files if p.name.lower().startswith(prefix)]
+        if len(prefixed) == 1:
+            return prefixed[0]
+        if prefixed:
+            return sorted(prefixed, key=lambda p: len(p.name))[0]
+
+        if len(mmproj_files) == 1:
+            return mmproj_files[0]
+
+        contains = [p for p in mmproj_files if base_name.lower() in p.name.lower()]
+        if len(contains) == 1:
+            return contains[0]
+        if contains:
+            return sorted(contains, key=lambda p: len(p.name))[0]
+
+        logger.warning(
+            "[warning]Multiple mmproj files found but none matched model %s[/warning]",
+            model_path.stem,
+        )
+        return None
+
     async def start_server(
         self,
         model_name: str,
@@ -204,6 +241,7 @@ class ProcessManager:
         ctx_size = context_size or settings.default_context_size
         n_gpu_layers = gpu_layers if gpu_layers is not None else settings.llama_gpu_layers
         n_threads = threads or settings.llama_threads
+        mmproj_path = self._find_mmproj(model_path)
 
         cmd = [
             str(llama_server),
@@ -213,6 +251,10 @@ class ProcessManager:
             "--ctx-size", str(ctx_size),
             "--n-gpu-layers", str(n_gpu_layers),
         ]
+
+        if mmproj_path:
+            cmd.extend(["--mmproj", str(mmproj_path)])
+            logger.info(f"  Using mmproj: {mmproj_path.name}")
 
         if n_threads:
             cmd.extend(["--threads", str(n_threads)])
@@ -228,6 +270,7 @@ class ProcessManager:
         llama_proc = LlamaProcess(
             model_name=model_name,
             model_path=model_path,
+            mmproj_path=mmproj_path,
             port=port,
             context_size=ctx_size,
             gpu_layers=n_gpu_layers,
@@ -488,4 +531,3 @@ class ProcessManager:
                 return response.status_code == 200
         except Exception:
             return False
-

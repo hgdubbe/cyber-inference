@@ -54,6 +54,86 @@ class ModelManager:
         logger.debug(f"  Models directory: {self.models_dir}")
         logger.debug(f"  HuggingFace token: {'configured' if self._hf_token else 'not set'}")
 
+    @staticmethod
+    def _is_mmproj_file(filename: str) -> bool:
+        name = filename.lower()
+        return name.endswith(".gguf") and "mmproj" in name
+
+    @staticmethod
+    def _select_mmproj_file(files: list[str], model_filename: str) -> Optional[str]:
+        mmproj_files = sorted([f for f in files if ModelManager._is_mmproj_file(f)])
+        if not mmproj_files:
+            return None
+
+        model_stem = Path(model_filename).stem
+        exact = f"mmproj-{model_stem}.gguf"
+        if exact in mmproj_files:
+            return exact
+
+        base_name = re.sub(r"(?i)-q\d+.*$", "", model_stem)
+        prefix = f"mmproj-{base_name}".lower()
+        prefixed = [f for f in mmproj_files if f.lower().startswith(prefix)]
+        if len(prefixed) == 1:
+            return prefixed[0]
+        if prefixed:
+            return sorted(prefixed, key=len)[0]
+
+        if len(mmproj_files) == 1:
+            return mmproj_files[0]
+
+        contains = [f for f in mmproj_files if base_name.lower() in f.lower()]
+        if len(contains) == 1:
+            return contains[0]
+        if contains:
+            return sorted(contains, key=len)[0]
+
+        logger.warning(
+            "[warning]Multiple mmproj files found but none matched model %s[/warning]",
+            model_stem,
+        )
+        return None
+
+    async def _download_mmproj(
+        self,
+        repo_id: str,
+        model_filename: str,
+        repo_files: Optional[list[str]] = None,
+        force: bool = False,
+    ) -> Optional[Path]:
+        try:
+            files = repo_files or list_repo_files(repo_id, token=self._hf_token)
+        except Exception as e:
+            logger.warning(f"[warning]Could not list repo files for mmproj: {e}[/warning]")
+            return None
+
+        mmproj_filename = self._select_mmproj_file(files, model_filename)
+        if not mmproj_filename:
+            return None
+
+        local_path = self.models_dir / mmproj_filename
+        if local_path.exists() and not force:
+            logger.info(f"  mmproj already present: {local_path}")
+            return local_path
+
+        logger.info(f"  Downloading mmproj: {mmproj_filename}")
+        try:
+            downloaded_path = await asyncio.to_thread(
+                hf_hub_download,
+                repo_id=repo_id,
+                filename=mmproj_filename,
+                local_dir=self.models_dir,
+                local_dir_use_symlinks=False,
+                token=self._hf_token,
+            )
+            downloaded_path = Path(downloaded_path)
+            if downloaded_path != local_path:
+                downloaded_path.rename(local_path)
+            logger.info(f"[success]mmproj download complete: {local_path}[/success]")
+            return local_path
+        except Exception as e:
+            logger.warning(f"[warning]mmproj download failed: {e}[/warning]")
+            return None
+
     async def search_models(
         self,
         query: str,
@@ -99,7 +179,7 @@ class ModelManager:
             logger.error(f"[error]HuggingFace search failed: {e}[/error]")
             raise
 
-    async def list_repo_files(self, repo_id: str) -> list[dict]:
+    async def list_repo_files(self, repo_id: str, files: Optional[list[str]] = None) -> list[dict]:
         """
         List GGUF files in a HuggingFace repository.
 
@@ -112,11 +192,11 @@ class ModelManager:
         logger.info(f"[info]Listing files in repo: {repo_id}[/info]")
 
         try:
-            files = list_repo_files(repo_id, token=self._hf_token)
+            files = files or list_repo_files(repo_id, token=self._hf_token)
 
             gguf_files = []
             for filename in files:
-                if filename.endswith(".gguf"):
+                if filename.endswith(".gguf") and not self._is_mmproj_file(filename):
                     # Get file info
                     try:
                         info = self._hf_api.get_hf_file_metadata(
@@ -161,10 +241,11 @@ class ModelManager:
             Path to downloaded model file
         """
         logger.info(f"[highlight]Downloading model from: {repo_id}[/highlight]")
+        repo_files = list_repo_files(repo_id, token=self._hf_token)
 
         # If no filename specified, find the best GGUF file
         if filename is None:
-            files = await self.list_repo_files(repo_id)
+            files = await self.list_repo_files(repo_id, files=repo_files)
             if not files:
                 raise ValueError(f"No GGUF files found in {repo_id}")
 
@@ -193,6 +274,7 @@ class ModelManager:
 
             # Ensure it's registered in DB
             await self._register_model(repo_id, filename, local_path)
+            await self._download_mmproj(repo_id, filename, repo_files=repo_files, force=force)
 
             # Notify complete
             await self._notify_progress(repo_id, filename, 100, "complete")
@@ -243,6 +325,7 @@ class ModelManager:
 
             # Register in database
             await self._register_model(repo_id, filename, local_path)
+            await self._download_mmproj(repo_id, filename, repo_files=repo_files, force=force)
 
             # Notify complete
             await self._notify_progress(repo_id, filename, 100, "complete")
@@ -386,6 +469,8 @@ class ModelManager:
         registered_files = {m["filename"] for m in models}
 
         for file_path in self.models_dir.glob("*.gguf"):
+            if self._is_mmproj_file(file_path.name):
+                continue
             if file_path.name not in registered_files:
                 models.append({
                     "id": None,
@@ -519,4 +604,3 @@ class ModelManager:
             filename=file_path.name,
             file_path=file_path,
         )
-
