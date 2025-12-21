@@ -7,7 +7,11 @@
 FROM nvcr.io/nvidia/cuda:13.0.0-devel-ubuntu24.04 as builder
 
 # Install build dependencies
+# Add deadsnakes PPA for Python 3.12 (needed for Ubuntu < 24.04)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-venv \
     python3.12-dev \
@@ -38,9 +42,14 @@ RUN uv pip install .
 FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04 as runtime
 
 # Install runtime dependencies
+# Ubuntu 22.04 needs deadsnakes PPA for Python 3.12
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-venv \
+    python3.12-distutils \
     curl \
     wget \
     libgomp1 \
