@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     default_context_size: int = Field(default=8192, description="Default context size for models")
     max_context_size: int = Field(default=32768, description="Maximum allowed context size")
     model_idle_timeout: int = Field(default=300, description="Seconds before unloading idle model")
-    max_loaded_models: int = Field(default=3, description="Maximum number of simultaneously loaded models")
+    max_loaded_models: int = Field(default=1, description="Maximum number of simultaneously loaded models")
 
     # Resource limits
     max_memory_percent: float = Field(default=80.0, description="Maximum memory usage percentage")
