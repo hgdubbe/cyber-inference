@@ -231,7 +231,7 @@ cyber-inference init
 cyber-inference install-llama
 
 # Download a model
-cyber-inference download-model TheBloke/Llama-2-7B-GGUF
+cyber-inference download-model ggml-org/gpt-oss-20b-GGUF
 
 # List downloaded models
 cyber-inference list-models
