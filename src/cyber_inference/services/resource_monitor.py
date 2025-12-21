@@ -90,6 +90,7 @@ class ResourceMonitor:
         self._current_resources: Optional[SystemResources] = None
         self._platform = platform.system().lower()
         self._gpu_vendor: Optional[str] = None
+        self._thor_memory_override_logged = False
 
         logger.info(f"[info]ResourceMonitor initialized[/info]")
         logger.debug(f"  Platform: {self._platform}")
@@ -329,6 +330,10 @@ class ResourceMonitor:
 
         # Memory info
         mem = psutil.virtual_memory()
+        total_memory_mb = mem.total / (1024 ** 2)
+        available_memory_mb = mem.available / (1024 ** 2)
+        used_memory_mb = mem.used / (1024 ** 2)
+        memory_percent = mem.percent
 
         # Swap info
         swap = psutil.swap_memory()
@@ -344,15 +349,23 @@ class ResourceMonitor:
         elif self._gpu_vendor == "apple":
             gpu = await self._get_apple_gpu_info()
 
+        if gpu and "thor" in gpu.name.lower():
+            total_memory_mb = 128 * 1024
+            available_memory_mb = max(total_memory_mb - used_memory_mb, 0.0)
+            memory_percent = (used_memory_mb / total_memory_mb) * 100 if total_memory_mb else memory_percent
+            if not self._thor_memory_override_logged:
+                logger.info("[info]Applying Thor memory override: 128GB[/info]")
+                self._thor_memory_override_logged = True
+
         return SystemResources(
             timestamp=datetime.now(),
             cpu_count=cpu_count,
             cpu_percent=cpu_percent,
             cpu_freq_mhz=cpu_freq_mhz,
-            total_memory_mb=mem.total / (1024 ** 2),
-            available_memory_mb=mem.available / (1024 ** 2),
-            used_memory_mb=mem.used / (1024 ** 2),
-            memory_percent=mem.percent,
+            total_memory_mb=total_memory_mb,
+            available_memory_mb=available_memory_mb,
+            used_memory_mb=used_memory_mb,
+            memory_percent=memory_percent,
             swap_total_mb=swap.total / (1024 ** 2),
             swap_used_mb=swap.used / (1024 ** 2),
             swap_percent=swap.percent,
