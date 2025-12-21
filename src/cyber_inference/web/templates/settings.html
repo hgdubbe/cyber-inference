@@ -217,6 +217,15 @@
                     <p class="text-xs text-gray-500 mt-1">
                         Admin password is already set. Disable protection to change it.
                     </p>
+                    <div class="mt-3">
+                        <button onclick="disableAdminPassword()"
+                                class="cyber-btn cyber-btn-danger px-4 py-2 rounded-lg font-mono">
+                            Disable Admin Protection
+                        </button>
+                        <p class="text-xs text-gray-500 mt-2">
+                            This will remove admin gating after a restart.
+                        </p>
+                    </div>
                     {% endif %}
                 </div>
             </div>
@@ -654,6 +663,52 @@
             await restartServer({ skipConfirm: true });
         } else {
             showToast({ tone: 'info', message: 'Restart later to apply the admin password.' });
+        }
+    }
+
+    async function disableAdminPassword() {
+        const confirmed = await confirmAction({
+            tone: 'danger',
+            title: 'Disable Admin Protection',
+            message: 'Disable admin protection? This will open access to the web UI after a restart.',
+            confirmText: 'Disable',
+            cancelText: 'Cancel',
+        });
+        if (!confirmed) return;
+
+        try {
+            const response = await adminFetch('/admin/config/admin_password', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ value: '' }),
+            });
+
+            if (!response.ok) {
+                showToast({ tone: 'danger', message: `Failed to disable admin protection (HTTP ${response.status}).` });
+                return;
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showToast({ tone: 'danger', message: 'Error disabling admin protection.' });
+            return;
+        }
+
+        showToast({ tone: 'success', message: 'Admin protection disabled. Restart required.' });
+
+        const restartNow = await confirmAction({
+            tone: 'warning',
+            title: 'Restart Required',
+            message: 'Restart the server now to apply the change?',
+            confirmText: 'Restart Now',
+            cancelText: 'Later',
+        });
+
+        if (restartNow) {
+            await restartServer({ skipConfirm: true });
+        } else {
+            showToast({ tone: 'info', message: 'Restart later to disable admin protection.' });
         }
     }
 

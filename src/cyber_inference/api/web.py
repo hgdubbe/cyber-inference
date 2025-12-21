@@ -47,7 +47,7 @@ def _template_context(request: Request, **kwargs) -> dict:
         "request": request,
         "version": __version__,
         "app_name": "Cyber-Inference",
-        "admin_enabled": settings.admin_password is not None,
+        "admin_enabled": bool(settings.admin_password),
         **kwargs,
     }
 
