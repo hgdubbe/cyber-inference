@@ -44,11 +44,13 @@ RUN set -eux; \
         python3-pip \
         wget; \
     rm -rf /var/lib/apt/lists/*; \
-    # Build llama.cpp (CPU for now - CUDA linking issues in container)
+    # Build llama.cpp with CUDA support
     git clone --depth 1 https://github.com/ggerganov/llama.cpp /tmp/llama.cpp; \
     cmake -S /tmp/llama.cpp -B /tmp/llama.cpp/build \
+        -DGGML_CUDA=ON \
         -DLLAMA_CURL=ON \
-        -DCMAKE_BUILD_TYPE=Release; \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CUDA_ARCHITECTURES="72;87;89;90"; \
     cmake --build /tmp/llama.cpp/build -j$(nproc) --target llama-server; \
     mkdir -p /app/bin; \
     # Copy llama-server and all shared libraries
@@ -67,7 +69,7 @@ RUN set -eux; \
     chown -R cyber:cyber /app /opt/cyber-inference
 
 ENV PATH="${VENV_PATH}/bin:${PATH}" \
-    LD_LIBRARY_PATH="/app/bin:${LD_LIBRARY_PATH}"
+    LD_LIBRARY_PATH="/app/bin:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
 
 EXPOSE 8337
 
