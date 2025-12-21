@@ -398,9 +398,7 @@ class LlamaInstaller:
         Returns:
             Version string, or None if not installed
         """
-        llama_server_path = self.bin_dir / "llama-server"
-        if self._platform == "windows":
-            llama_server_path = self.bin_dir / "llama-server.exe"
+        llama_server_path = self.get_binary_path()
 
         if not llama_server_path.exists():
             return None
@@ -416,8 +414,30 @@ class LlamaInstaller:
         except Exception:
             return "unknown"
 
+    def _find_system_binary(self) -> Optional[Path]:
+        """
+        Check if llama-server exists in system PATH.
+
+        Returns:
+            Path to system binary if found, None otherwise
+        """
+        binary_name = "llama-server.exe" if self._platform == "windows" else "llama-server"
+        system_path = shutil.which(binary_name)
+        if system_path:
+            return Path(system_path)
+        return None
+
     def is_installed(self) -> bool:
-        """Check if llama-server is installed."""
+        """
+        Check if llama-server is installed.
+
+        Checks system PATH first, then falls back to bin_dir.
+        """
+        # Check system PATH first
+        if self._find_system_binary() is not None:
+            return True
+
+        # Fall back to bin_dir
         llama_server_path = self.bin_dir / "llama-server"
         if self._platform == "windows":
             llama_server_path = self.bin_dir / "llama-server.exe"
@@ -425,7 +445,17 @@ class LlamaInstaller:
         return llama_server_path.exists()
 
     def get_binary_path(self) -> Path:
-        """Get the path to the llama-server binary."""
+        """
+        Get the path to the llama-server binary.
+
+        Checks system PATH first, then falls back to bin_dir.
+        """
+        # Check system PATH first
+        system_binary = self._find_system_binary()
+        if system_binary is not None:
+            return system_binary
+
+        # Fall back to bin_dir
         llama_server_path = self.bin_dir / "llama-server"
         if self._platform == "windows":
             llama_server_path = self.bin_dir / "llama-server.exe"

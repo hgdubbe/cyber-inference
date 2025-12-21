@@ -16,6 +16,12 @@
 
 Cyber-Inference is a web GUI management tool for running OpenAI-compatible inference servers. Built on llama.cpp, it provides automatic model management, dynamic resource allocation, and a beautiful cyberpunk-themed interface designed for edge deployment.
 
+## Why Cyber-Inference?
+
+I made this project because I need to deploy inference servers on the edge, for labs and for personal use. I want an easy way to copy paste models from huggingface and have them automatically downloaded and loaded into the inference server. I don't want to management memmory and I just want to have standby inference that is ready to go when I need it (auto model loading and unloading).
+
+Specifically, I made this project for MacOS and NVIDIA Jetson devices.
+
 ## ✨ Features
 
 - **🖥️ Cyberpunk Web GUI** - Beautiful dark-mode interface with neon green accents, real-time updates, and responsive design

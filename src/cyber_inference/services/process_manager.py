@@ -107,8 +107,27 @@ class ProcessManager:
                 logger.warning(f"[warning]Could not auto-install llama-server: {e}[/warning]")
                 logger.warning("[warning]You can manually install it using: cyber-inference install-llama[/warning]")
         else:
+            # Determine which location was used
+            binary_path = self._installer.get_binary_path()
+            # Check if it's from system PATH (not in bin_dir)
+            try:
+                # Resolve to absolute paths for comparison
+                binary_abs = binary_path.resolve()
+                bin_dir_abs = self.bin_dir.resolve()
+                if not str(binary_abs).startswith(str(bin_dir_abs)):
+                    location = "system PATH"
+                else:
+                    location = f"bin_dir ({self.bin_dir})"
+            except Exception:
+                # Fallback if path resolution fails
+                if str(binary_path).startswith(str(self.bin_dir)):
+                    location = f"bin_dir ({self.bin_dir})"
+                else:
+                    location = "system PATH"
+
             version = await self._installer.get_installed_version()
-            logger.info(f"[success]llama-server installed: {version}[/success]")
+            logger.info(f"[success]llama-server found in {location}: {version}[/success]")
+            logger.debug(f"  Binary path: {binary_path}")
 
         self._initialized = True
         logger.info("[success]ProcessManager initialized successfully[/success]")
