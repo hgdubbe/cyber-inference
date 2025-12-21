@@ -184,17 +184,8 @@ class ProcessManager:
         if prefixed:
             return sorted(prefixed, key=lambda p: len(p.name))[0]
 
-        if len(mmproj_files) == 1:
-            return mmproj_files[0]
-
-        contains = [p for p in mmproj_files if base_name.lower() in p.name.lower()]
-        if len(contains) == 1:
-            return contains[0]
-        if contains:
-            return sorted(contains, key=lambda p: len(p.name))[0]
-
-        logger.warning(
-            "[warning]Multiple mmproj files found but none matched model %s[/warning]",
+        logger.info(
+            "[info]No mmproj match found for model %s[/info]",
             model_path.stem,
         )
         return None
