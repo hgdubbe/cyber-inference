@@ -14,7 +14,7 @@
 
 ---
 
-Cyber-Inference is a web GUI management tool for running OpenAI-compatible inference servers. Built on llama.cpp, it provides automatic model management, dynamic resource allocation, and a beautiful cyberpunk-themed interface designed for edge deployment.
+Cyber-Inference is a web GUI management tool for running OpenAI-compatible inference servers. Built on llama.cpp, it provides automatic model management, dynamic resource allocation, and a beautiful cyberpunk-themed interface designed for edge deployment. VLM/LLM and whatever llama.cpp supports.
 
 ## Why Cyber-Inference?
 
