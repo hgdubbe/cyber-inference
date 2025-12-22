@@ -270,32 +270,72 @@ class ModelManager:
         return name.endswith(".gguf") and "mmproj" in name
 
     @staticmethod
+    def _split_repo_and_filename(
+        repo_id: str,
+        filename: Optional[str],
+    ) -> tuple[str, Optional[str]]:
+        if filename:
+            return repo_id, filename
+
+        cleaned = repo_id.strip()
+        if cleaned.startswith("https://huggingface.co/"):
+            cleaned = cleaned[len("https://huggingface.co/"):]
+        cleaned = cleaned.lstrip("/").split("?", 1)[0]
+
+        if not cleaned.endswith(".gguf"):
+            return repo_id, filename
+
+        parts = cleaned.split("/")
+        if len(parts) < 3:
+            return repo_id, filename
+
+        for marker in ("blob", "resolve", "tree"):
+            if marker in parts:
+                idx = parts.index(marker)
+                if idx + 1 < len(parts):
+                    parts = parts[:idx] + parts[idx + 2:]
+                else:
+                    parts = parts[:idx]
+                break
+
+        if len(parts) < 3 or not parts[-1].endswith(".gguf"):
+            return repo_id, filename
+
+        new_repo_id = "/".join(parts[:2])
+        new_filename = "/".join(parts[2:])
+        return new_repo_id, new_filename
+
+    @staticmethod
     def _select_mmproj_file(files: list[str], model_filename: str) -> Optional[str]:
         mmproj_files = sorted([f for f in files if ModelManager._is_mmproj_file(f)])
         if not mmproj_files:
             return None
 
+        def basename(path: str) -> str:
+            return Path(path).name
+
         model_stem = Path(model_filename).stem
-        exact = f"mmproj-{model_stem}.gguf"
-        if exact in mmproj_files:
-            return exact
+        exact = f"mmproj-{model_stem}.gguf".lower()
+        for candidate in mmproj_files:
+            if basename(candidate).lower() == exact:
+                return candidate
 
         base_name = re.sub(r"(?i)-q\d+.*$", "", model_stem)
         prefix = f"mmproj-{base_name}".lower()
-        prefixed = [f for f in mmproj_files if f.lower().startswith(prefix)]
+        prefixed = [f for f in mmproj_files if basename(f).lower().startswith(prefix)]
         if len(prefixed) == 1:
             return prefixed[0]
         if prefixed:
-            return sorted(prefixed, key=len)[0]
+            return sorted(prefixed, key=lambda name: len(basename(name)))[0]
 
         if len(mmproj_files) == 1:
             return mmproj_files[0]
 
-        contains = [f for f in mmproj_files if base_name.lower() in f.lower()]
+        contains = [f for f in mmproj_files if base_name.lower() in basename(f).lower()]
         if len(contains) == 1:
             return contains[0]
         if contains:
-            return sorted(contains, key=len)[0]
+            return sorted(contains, key=lambda name: len(basename(name)))[0]
 
         logger.warning(
             "[warning]Multiple mmproj files found but none matched model %s[/warning]",
@@ -306,7 +346,7 @@ class ModelManager:
     async def _download_mmproj(
         self,
         repo_id: str,
-        model_filename: str,
+        model_path: Path,
         repo_files: Optional[list[str]] = None,
         force: bool = False,
     ) -> Optional[Path]:
@@ -316,11 +356,11 @@ class ModelManager:
             logger.warning(f"[warning]Could not list repo files for mmproj: {e}[/warning]")
             return None
 
-        mmproj_filename = self._select_mmproj_file(files, model_filename)
+        mmproj_filename = self._select_mmproj_file(files, model_path.name)
         if not mmproj_filename:
             return None
 
-        local_path = self.models_dir / mmproj_filename
+        local_path = model_path.parent / f"mmproj-{model_path.stem}.gguf"
         if local_path.exists() and not force:
             logger.info(f"  mmproj already present: {local_path}")
             return local_path
@@ -336,8 +376,12 @@ class ModelManager:
                 token=self._hf_token,
             )
             downloaded_path = Path(downloaded_path)
+            local_path.parent.mkdir(parents=True, exist_ok=True)
             if downloaded_path != local_path:
+                if local_path.exists():
+                    local_path.unlink()
                 downloaded_path.rename(local_path)
+                logger.info(f"  Aligned mmproj filename to: {local_path.name}")
             logger.info(f"[success]mmproj download complete: {local_path}[/success]")
             return local_path
         except Exception as e:
@@ -450,6 +494,11 @@ class ModelManager:
         Returns:
             Path to downloaded model file
         """
+        repo_id = repo_id.strip()
+        filename = filename.strip() if filename else None
+        parsed = self._split_repo_and_filename(repo_id, filename)
+        repo_id, filename = parsed
+
         logger.info(f"[highlight]Downloading model from: {repo_id}[/highlight]")
         repo_files = list_repo_files(repo_id, token=self._hf_token)
 
@@ -484,7 +533,7 @@ class ModelManager:
 
             # Ensure it's registered in DB
             await self._register_model(repo_id, filename, local_path)
-            await self._download_mmproj(repo_id, filename, repo_files=repo_files, force=force)
+            await self._download_mmproj(repo_id, local_path, repo_files=repo_files, force=force)
 
             # Notify complete
             await self._notify_progress(repo_id, filename, 100, "complete")
@@ -535,7 +584,7 @@ class ModelManager:
 
             # Register in database
             await self._register_model(repo_id, filename, local_path)
-            await self._download_mmproj(repo_id, filename, repo_files=repo_files, force=force)
+            await self._download_mmproj(repo_id, local_path, repo_files=repo_files, force=force)
 
             # Notify complete
             await self._notify_progress(repo_id, filename, 100, "complete")

@@ -261,12 +261,12 @@
         <form id="downloadForm" class="p-6 space-y-4">
             <div>
                 <label class="block text-sm font-mono text-gray-400 mb-2">
-                    HuggingFace Repository ID
+                    HuggingFace Repo ID or Direct .gguf Path
                 </label>
                 <input type="text"
                        id="repoId"
                        name="hf_repo_id"
-                       placeholder="e.g., ggml-org/gpt-oss-20b-GGUF"
+                       placeholder="e.g., ggml-org/gpt-oss-20b-GGUF or unsloth/Qwen3-VL-30B-A3B-Instruct-GGUF/Qwen3-VL-30B-A3B-Instruct-UD-Q4_K_XL.gguf"
                        class="cyber-input w-full px-4 py-3 rounded-lg font-mono"
                        required>
             </div>
@@ -277,7 +277,7 @@
                 <input type="text"
                        id="filename"
                        name="hf_filename"
-                       placeholder="e.g., gpt-oss-20b-GGUF.gguf"
+                       placeholder="e.g., gpt-oss-20b-mxfp4.gguf"
                        class="cyber-input w-full px-4 py-3 rounded-lg font-mono">
             </div>
             <div id="downloadProgress" class="hidden">
@@ -544,6 +544,5 @@
     }
 </script>
 {% endblock %}
-
 
 
