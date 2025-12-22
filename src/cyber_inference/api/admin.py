@@ -325,7 +325,7 @@ async def download_model(
         )
 
 
-@router.delete("/models/{model_name}")
+@router.delete("/models/{model_name:path}")
 async def delete_model(
     model_name: str,
     _: bool = Depends(verify_admin_token),
@@ -355,7 +355,7 @@ async def delete_model(
     return {"status": "deleted", "model": model_name}
 
 
-@router.post("/models/{model_name}/load")
+@router.post("/models/{model_name:path}/load")
 async def load_model(
     model_name: str,
     request: Optional[LoadModelRequest] = None,
@@ -395,7 +395,7 @@ async def load_model(
         )
 
 
-@router.post("/models/{model_name}/unload")
+@router.post("/models/{model_name:path}/unload")
 async def unload_model(
     model_name: str,
     _: bool = Depends(verify_admin_token),
