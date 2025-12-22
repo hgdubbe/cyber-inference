@@ -314,6 +314,19 @@ class ModelManager:
         def basename(path: str) -> str:
             return Path(path).name
 
+        def pick_by_basename(names: list[str]) -> Optional[str]:
+            preferred = (
+                "mmproj-f16.gguf",
+                "mmproj-f32.gguf",
+                "mmproj-q8_0.gguf",
+                "mmproj-q4_0.gguf",
+            )
+            lowered = {basename(name).lower(): name for name in names}
+            for candidate in preferred:
+                if candidate in lowered:
+                    return lowered[candidate]
+            return None
+
         model_stem = Path(model_filename).stem
         exact = f"mmproj-{model_stem}.gguf".lower()
         for candidate in mmproj_files:
@@ -330,6 +343,10 @@ class ModelManager:
 
         if len(mmproj_files) == 1:
             return mmproj_files[0]
+
+        generic = pick_by_basename(mmproj_files)
+        if generic:
+            return generic
 
         contains = [f for f in mmproj_files if base_name.lower() in basename(f).lower()]
         if len(contains) == 1:
