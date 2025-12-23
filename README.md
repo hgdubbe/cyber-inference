@@ -255,13 +255,20 @@ cyber-inference version
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| POST | `/admin/login` | Authenticate admin and receive JWT |
 | GET | `/admin/status` | Server status |
 | GET | `/admin/resources` | System resources |
 | GET | `/admin/models` | List all models |
 | POST | `/admin/models/download` | Download a model |
-| POST | `/admin/models/{name}/load` | Load a model |
-| POST | `/admin/models/{name}/unload` | Unload a model |
-| DELETE | `/admin/models/{name}` | Delete a model |
+| POST | `/admin/models/{name:path}/load` | Load a model |
+| POST | `/admin/models/{name:path}/unload` | Unload a model |
+| DELETE | `/admin/models/{name:path}` | Delete a model |
+| GET | `/admin/sessions` | List active model sessions |
+| GET | `/admin/config` | List configuration values |
+| PUT | `/admin/config/{key}` | Update a configuration value |
+| POST | `/admin/shutdown` | Graceful shutdown (for restart) |
+
+All `/admin/*` endpoints require a Bearer token when `CYBER_INFERENCE_ADMIN_PASSWORD` is set.
 
 ### Utility Endpoints
 
@@ -333,4 +340,3 @@ GPU GPLv3 Licensed.
 [![GitHub](https://img.shields.io/badge/GitHub-ramborogers-181717?style=for-the-badge&logo=github)](https://github.com/ramborogers)
 [![Twitter](https://img.shields.io/badge/Twitter-@matthewrogers-1DA1F2?style=for-the-badge&logo=twitter)](https://x.com/matthewrogers)
 [![Website](https://img.shields.io/badge/Web-matthewrogers.org-00ADD8?style=for-the-badge&logo=google-chrome)](https://matthewrogers.org)
-
