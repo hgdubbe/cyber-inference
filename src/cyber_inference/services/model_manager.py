@@ -589,20 +589,23 @@ class ModelManager:
             # Use provided files list or all files from tree
             filenames_to_check = files if files else all_files
 
-            gguf_files = []
+            model_files = []
             for filename in filenames_to_check:
-                if filename.endswith(".gguf") and not self._is_mmproj_file(filename):
+                is_gguf = filename.endswith(".gguf") and not self._is_mmproj_file(filename)
+                is_whisper_bin = filename.startswith("ggml-") and filename.endswith(".bin")
+                
+                if is_gguf or is_whisper_bin:
                     size = file_sizes.get(filename, 0)
                     quantization = self._extract_quant_suffix(filename)
 
-                    gguf_files.append({
+                    model_files.append({
                         "filename": filename,
                         "size_bytes": size,
                         "quantization": quantization,
                     })
 
-            logger.info(f"[success]Found {len(gguf_files)} GGUF files[/success]")
-            return gguf_files
+            logger.info(f"[success]Found {len(model_files)} model files[/success]")
+            return model_files
 
         except Exception as e:
             logger.error(f"[error]Failed to list repo files: {e}[/error]")
@@ -637,9 +640,19 @@ class ModelManager:
 
             model_files = []
             mmproj_files = []
+            
+            # Check if this is a whisper.cpp repo (contains ggml-*.bin files)
+            is_whisper_repo = any(
+                f.startswith("ggml-") and f.endswith(".bin") 
+                for f in file_sizes.keys()
+            )
 
             for filename, size in file_sizes.items():
-                if not filename.endswith(".gguf"):
+                # Support both GGUF files and whisper.cpp bin files
+                is_gguf = filename.endswith(".gguf")
+                is_whisper_bin = filename.startswith("ggml-") and filename.endswith(".bin")
+                
+                if not (is_gguf or is_whisper_bin):
                     continue
 
                 quantization = self._extract_quant_suffix(filename)
@@ -648,10 +661,10 @@ class ModelManager:
                     "filename": filename,
                     "size_bytes": size,
                     "quantization": quantization,
-                    "is_mmproj": self._is_mmproj_file(filename),
+                    "is_mmproj": self._is_mmproj_file(filename) if is_gguf else False,
                 }
 
-                if self._is_mmproj_file(filename):
+                if is_gguf and self._is_mmproj_file(filename):
                     mmproj_files.append(file_info)
                 else:
                     model_files.append(file_info)
@@ -885,8 +898,17 @@ class ModelManager:
         size_bytes = file_path.stat().st_size if file_path.exists() else 0
 
         # Determine model name (use filename without extension)
-        model_name = filename.replace(".gguf", "")
-        context_length = self._read_gguf_context_length(file_path)
+        if filename.endswith(".gguf"):
+            model_name = filename.replace(".gguf", "")
+        elif filename.endswith(".bin"):
+            model_name = filename.replace(".bin", "")
+        else:
+            model_name = Path(filename).stem
+        
+        # Read context length for GGUF files (not applicable to whisper bin)
+        context_length = None
+        if filename.endswith(".gguf"):
+            context_length = self._read_gguf_context_length(file_path)
 
         # Convert mmproj_path to string if provided
         mmproj_path_str = str(mmproj_path) if mmproj_path else None
@@ -1022,8 +1044,9 @@ class ModelManager:
         # Scan for unregistered local files
         registered_files = {m["filename"] for m in models}
 
-        for file_path in self.models_dir.glob("*.gguf"):
-            if self._is_mmproj_file(file_path.name):
+        # Scan for both GGUF and whisper.cpp bin files
+        for file_path in list(self.models_dir.glob("*.gguf")) + list(self.models_dir.glob("ggml-*.bin")):
+            if file_path.suffix == ".gguf" and self._is_mmproj_file(file_path.name):
                 continue
             if file_path.name not in registered_files:
                 context_length = self._read_gguf_context_length(file_path)
@@ -1156,8 +1179,8 @@ class ModelManager:
         if not file_path.exists():
             raise FileNotFoundError(f"Model file not found: {file_path}")
 
-        if not file_path.suffix == ".gguf":
-            raise ValueError("Model file must be a .gguf file")
+        if file_path.suffix not in (".gguf", ".bin"):
+            raise ValueError("Model file must be a .gguf or .bin file")
 
         model_name = name or file_path.stem
 
