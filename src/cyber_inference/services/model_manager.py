@@ -916,9 +916,14 @@ class ModelManager:
                 if not existing.model_type:
                     name_lower = model_name.lower()
                     embedding_patterns = ["embed", "bge", "e5-", "gte-", "stella", "nomic"]
+                    transcription_patterns = ["whisper", "distil-whisper", "faster-whisper"]
+
                     if any(pattern in name_lower for pattern in embedding_patterns):
                         existing.model_type = "embedding"
                         logger.info(f"  Auto-detected model type: embedding")
+                    elif any(pattern in name_lower for pattern in transcription_patterns):
+                        existing.model_type = "transcription"
+                        logger.info(f"  Auto-detected model type: transcription")
 
                 await session.commit()
                 logger.debug(f"Updated existing model record: {model_name}")
@@ -928,9 +933,14 @@ class ModelManager:
             model_type = None
             name_lower = model_name.lower()
             embedding_patterns = ["embed", "bge", "e5-", "gte-", "stella", "nomic"]
+            transcription_patterns = ["whisper", "distil-whisper", "faster-whisper"]
+
             if any(pattern in name_lower for pattern in embedding_patterns):
                 model_type = "embedding"
                 logger.info(f"  Auto-detected model type: embedding")
+            elif any(pattern in name_lower for pattern in transcription_patterns):
+                model_type = "transcription"
+                logger.info(f"  Auto-detected model type: transcription")
 
             # Create new record
             model = Model(

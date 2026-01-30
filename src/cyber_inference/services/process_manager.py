@@ -24,13 +24,14 @@ import psutil
 from cyber_inference.core.config import get_settings
 from cyber_inference.core.logging import get_logger
 from cyber_inference.services.llama_installer import LlamaInstaller
+from cyber_inference.services.whisper_installer import WhisperInstaller
 
 logger = get_logger(__name__)
 
 
 @dataclass
 class LlamaProcess:
-    """Represents a running llama-server process."""
+    """Represents a running llama-server or whisper-server process."""
     model_name: str
     model_path: Path
     port: int
@@ -45,6 +46,9 @@ class LlamaProcess:
     context_size: int = 4096
     gpu_layers: int = -1
     threads: Optional[int] = None
+
+    # Server type: 'llama' or 'whisper'
+    server_type: str = "llama"
 
     # Resource tracking
     memory_mb: float = 0.0
@@ -84,6 +88,7 @@ class ProcessManager:
         self._processes: dict[str, LlamaProcess] = {}
         self._port_allocations: set[int] = set()
         self._installer = LlamaInstaller(bin_dir=self.bin_dir)
+        self._whisper_installer = WhisperInstaller(bin_dir=self.bin_dir)
         self._initialized = False
         self._shutdown_event = asyncio.Event()
 
@@ -336,6 +341,162 @@ class ProcessManager:
             llama_proc.error_message = str(e)
             self._release_port(port)
             raise
+
+    async def start_whisper_server(
+        self,
+        model_name: str,
+        model_path: Path,
+        gpu_layers: Optional[int] = None,
+        threads: Optional[int] = None,
+    ) -> LlamaProcess:
+        """
+        Start a new whisper-server process for a transcription model.
+
+        Args:
+            model_name: Name identifier for the model
+            model_path: Path to the GGUF Whisper model file
+            gpu_layers: Number of GPU layers (-1 for auto)
+            threads: Number of CPU threads
+
+        Returns:
+            LlamaProcess instance (with server_type='whisper')
+        """
+        logger.info(f"[highlight]Starting whisper-server for model: {model_name}[/highlight]")
+
+        if model_name in self._processes:
+            existing = self._processes[model_name]
+            if existing.status == "running":
+                logger.warning(f"Model {model_name} already running on port {existing.port}")
+                return existing
+
+        settings = get_settings()
+
+        # Check if whisper-server is installed
+        if not self._whisper_installer.is_installed():
+            logger.info("[info]whisper-server not found, attempting to install...[/info]")
+            try:
+                await self._whisper_installer.install()
+            except Exception as e:
+                logger.warning(f"[warning]Could not auto-install whisper-server: {e}[/warning]")
+                logger.warning("[warning]Install manually: cyber-inference install-whisper[/warning]")
+                raise RuntimeError(f"whisper-server not installed: {e}")
+
+        # Allocate port
+        port = self._find_available_port()
+        logger.info(f"  Allocated port: {port}")
+
+        # Build command
+        whisper_server = self._whisper_installer.get_binary_path()
+        n_gpu_layers = gpu_layers if gpu_layers is not None else settings.llama_gpu_layers
+        n_threads = threads or settings.llama_threads
+
+        cmd = [
+            str(whisper_server),
+            "--model", str(model_path),
+            "--port", str(port),
+            "--host", "127.0.0.1",
+        ]
+
+        # Add GPU layers if supported (some whisper builds support this)
+        if n_gpu_layers != 0:
+            cmd.extend(["--gpu-layers", str(n_gpu_layers)])
+
+        if n_threads:
+            cmd.extend(["--threads", str(n_threads)])
+
+        logger.debug(f"  Command: {' '.join(cmd)}")
+
+        # Create process entry
+        whisper_proc = LlamaProcess(
+            model_name=model_name,
+            model_path=model_path,
+            port=port,
+            gpu_layers=n_gpu_layers,
+            threads=n_threads,
+            server_type="whisper",
+        )
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+
+            whisper_proc.process = process
+            whisper_proc.pid = process.pid
+            whisper_proc.status = "starting"
+
+            logger.info(f"  Process started with PID: {process.pid}")
+
+            # Store in tracking dict
+            self._processes[model_name] = whisper_proc
+
+            # Start output monitoring
+            asyncio.create_task(self._monitor_output(model_name, process))
+
+            # Wait for whisper server to be ready
+            await self._wait_for_whisper_ready(model_name, port)
+
+            whisper_proc.status = "running"
+            logger.info(f"[success]whisper-server ready for {model_name} on port {port}[/success]")
+
+            return whisper_proc
+
+        except Exception as e:
+            logger.error(f"[error]Failed to start whisper-server: {e}[/error]")
+            whisper_proc.status = "error"
+            whisper_proc.error_message = str(e)
+            self._release_port(port)
+            raise
+
+    async def _wait_for_whisper_ready(
+        self,
+        model_name: str,
+        port: int,
+        timeout: float = 60.0,
+        check_interval: float = 1.0,
+    ) -> None:
+        """
+        Wait for the whisper-server to be ready.
+
+        Args:
+            model_name: Model name for logging
+            port: Server port
+            timeout: Maximum wait time in seconds
+            check_interval: Time between health checks
+        """
+        logger.info(f"  Waiting for whisper-server to be ready (timeout: {timeout}s)...")
+
+        # whisper.cpp server typically responds on /inference or root
+        start_time = asyncio.get_event_loop().time()
+
+        async with httpx.AsyncClient() as client:
+            while True:
+                elapsed = asyncio.get_event_loop().time() - start_time
+
+                if elapsed > timeout:
+                    raise TimeoutError(f"Whisper server failed to start within {timeout}s")
+
+                try:
+                    # Try root endpoint first (common for whisper.cpp server)
+                    response = await client.get(
+                        f"http://127.0.0.1:{port}/",
+                        timeout=2.0,
+                    )
+                    # Any response (even 404) means server is up
+                    logger.info(f"  Whisper server ready after {elapsed:.1f}s")
+                    return
+                except Exception:
+                    pass
+
+                # Check if process died
+                proc = self._processes.get(model_name)
+                if proc and proc.process and proc.process.returncode is not None:
+                    raise RuntimeError(f"Whisper server exited with code {proc.process.returncode}")
+
+                logger.debug(f"  Waiting for whisper server... ({elapsed:.1f}s)")
+                await asyncio.sleep(check_interval)
 
     async def _monitor_output(
         self,

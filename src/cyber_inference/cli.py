@@ -174,6 +174,29 @@ def install_llama(
 
 
 @app.command()
+def install_whisper(
+    platform: Optional[str] = typer.Option(None, "--platform", "-p", help="Target platform (auto-detect if not specified)"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force reinstall even if already installed"),
+) -> None:
+    """
+    Install or update whisper.cpp server binary.
+
+    Downloads and installs the appropriate whisper.cpp binary for audio transcription.
+    If whisper-server is already in your PATH, it will be used instead.
+    """
+    setup_logging()
+    logger.info("[highlight]Installing whisper.cpp[/highlight]")
+
+    from cyber_inference.services.whisper_installer import WhisperInstaller
+
+    async def _install():
+        installer = WhisperInstaller()
+        await installer.install(platform_override=platform, force=force)
+
+    asyncio.run(_install())
+
+
+@app.command()
 def download_model(
     model_id: str = typer.Argument(..., help="HuggingFace model ID (e.g., 'TheBloke/Llama-2-7B-GGUF')"),
     filename: Optional[str] = typer.Option(None, "--filename", "-f", help="Specific file to download"),

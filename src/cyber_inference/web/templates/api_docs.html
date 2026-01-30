@@ -113,6 +113,58 @@
             </div>
         </div>
 
+        <!-- Audio Transcriptions -->
+        <div class="cyber-card rounded-xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-cyber-neon/20 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <span class="px-3 py-1 text-xs font-mono rounded bg-cyber-neon/20 text-cyber-neon">POST</span>
+                    <code class="font-mono text-white">/v1/audio/transcriptions</code>
+                </div>
+            </div>
+            <div class="p-6">
+                <p class="text-gray-400 mb-4">Transcribe audio to text using Whisper models.</p>
+
+                <h4 class="font-mono text-cyber-neon text-sm mb-2">Request (multipart/form-data)</h4>
+                <pre class="p-4 bg-cyber-black rounded-lg overflow-x-auto"><code class="text-sm text-gray-300">file: &lt;audio file&gt;  (required)
+model: "whisper-large-v3-turbo"  (required)
+language: "en"  (optional, auto-detect if not specified)
+response_format: "json"  (optional: json, text, verbose_json, srt, vtt)
+temperature: 0.0  (optional)</code></pre>
+
+                <h4 class="font-mono text-cyber-neon text-sm mt-4 mb-2">Example (curl)</h4>
+                <pre class="p-4 bg-cyber-black rounded-lg overflow-x-auto"><code class="text-sm text-gray-300">curl http://localhost:8337/v1/audio/transcriptions \
+  -F file=@audio.mp3 \
+  -F model=whisper-large-v3-turbo</code></pre>
+
+                <h4 class="font-mono text-cyber-neon text-sm mt-4 mb-2">Example Response</h4>
+                <pre class="p-4 bg-cyber-black rounded-lg overflow-x-auto"><code class="text-sm text-gray-300">{
+  "text": "Hello, this is a transcription test.",
+  "task": "transcribe",
+  "language": "en",
+  "duration": 3.5
+}</code></pre>
+            </div>
+        </div>
+
+        <!-- Audio Translations -->
+        <div class="cyber-card rounded-xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-cyber-neon/20 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <span class="px-3 py-1 text-xs font-mono rounded bg-cyber-neon/20 text-cyber-neon">POST</span>
+                    <code class="font-mono text-white">/v1/audio/translations</code>
+                </div>
+            </div>
+            <div class="p-6">
+                <p class="text-gray-400 mb-4">Translate audio in any language to English text.</p>
+
+                <h4 class="font-mono text-cyber-neon text-sm mb-2">Request (multipart/form-data)</h4>
+                <pre class="p-4 bg-cyber-black rounded-lg overflow-x-auto"><code class="text-sm text-gray-300">file: &lt;audio file&gt;  (required)
+model: "whisper-large-v3-turbo"  (required)
+response_format: "json"  (optional)
+temperature: 0.0  (optional)</code></pre>
+            </div>
+        </div>
+
         <!-- Models -->
         <div class="cyber-card rounded-xl overflow-hidden">
             <div class="px-6 py-4 border-b border-cyber-neon/20 flex items-center justify-between">

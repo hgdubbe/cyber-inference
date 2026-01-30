@@ -308,6 +308,51 @@ class AdminLoginResponse(BaseModel):
 
 
 # =============================================================================
+# Audio Transcription Schemas (OpenAI-compatible)
+# =============================================================================
+
+class TranscriptionRequest(BaseModel):
+    """Request for audio transcription (POST /v1/audio/transcriptions)."""
+    model: str = Field(..., description="Model to use for transcription")
+    language: Optional[str] = Field(None, description="Language of the audio (ISO-639-1 code)")
+    prompt: Optional[str] = Field(None, description="Optional prompt to guide transcription")
+    response_format: str = Field("json", description="Response format: json, text, srt, verbose_json, vtt")
+    temperature: float = Field(0.0, ge=0.0, le=1.0, description="Sampling temperature")
+
+
+class TranscriptionSegment(BaseModel):
+    """A segment of transcribed audio with timing."""
+    id: int
+    seek: int
+    start: float
+    end: float
+    text: str
+    tokens: list[int] = Field(default_factory=list)
+    temperature: float = 0.0
+    avg_logprob: float = 0.0
+    compression_ratio: float = 0.0
+    no_speech_prob: float = 0.0
+
+
+class TranscriptionResponse(BaseModel):
+    """Response from transcription endpoint."""
+    text: str
+    task: str = "transcribe"
+    language: Optional[str] = None
+    duration: Optional[float] = None
+    segments: Optional[list[TranscriptionSegment]] = None
+
+
+class TranslationResponse(BaseModel):
+    """Response from translation endpoint (audio to English text)."""
+    text: str
+    task: str = "translate"
+    language: Optional[str] = None
+    duration: Optional[float] = None
+    segments: Optional[list[TranscriptionSegment]] = None
+
+
+# =============================================================================
 # WebSocket Schemas
 # =============================================================================
 

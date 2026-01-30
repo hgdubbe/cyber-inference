@@ -11,16 +11,17 @@ Proxies requests to the appropriate llama-server instance,
 handling automatic model loading and streaming responses.
 """
 
-import asyncio
 import json
+import tempfile
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import AsyncGenerator, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
@@ -39,6 +40,8 @@ from cyber_inference.models.schemas import (
     EmbeddingResponse,
     ModelsResponse,
     ModelInfo,
+    TranscriptionResponse,
+    TranscriptionSegment,
 )
 from cyber_inference.services.auto_loader import AutoLoader
 
@@ -186,7 +189,7 @@ async def chat_completions(
     Proxies to the appropriate llama-server instance,
     auto-loading the model if necessary.
     """
-    logger.info(f"[highlight]POST /v1/chat/completions[/highlight]")
+    logger.info("[highlight]POST /v1/chat/completions[/highlight]")
     logger.info(f"  Model: {request.model}")
     logger.info(f"  Messages: {len(request.messages)}")
     logger.info(f"  Stream: {request.stream}")
@@ -280,7 +283,8 @@ async def chat_completions(
         ),
     )
 
-    logger.info(f"[success]Chat completion successful: {usage.get('total_tokens', 0)} tokens[/success]")
+    total_tok = usage.get('total_tokens', 0)
+    logger.info(f"[success]Chat completion successful: {total_tok} tokens[/success]")
 
     return completion_response
 
@@ -355,7 +359,7 @@ async def completions(
 
     Legacy endpoint for non-chat completions.
     """
-    logger.info(f"[highlight]POST /v1/completions[/highlight]")
+    logger.info("[highlight]POST /v1/completions[/highlight]")
     logger.info(f"  Model: {request.model}")
     logger.info(f"  Stream: {request.stream}")
 
@@ -480,7 +484,7 @@ async def embeddings(
     """
     Create embeddings for text.
     """
-    logger.info(f"[highlight]POST /v1/embeddings[/highlight]")
+    logger.info("[highlight]POST /v1/embeddings[/highlight]")
     logger.info(f"  Model: {request.model}")
 
     auto_loader = get_auto_loader()
@@ -545,3 +549,253 @@ async def embeddings(
             "total_tokens": total_tokens,
         },
     )
+
+
+@router.post("/audio/transcriptions", response_model=None)
+async def transcriptions(
+    file: UploadFile = File(..., description="Audio file to transcribe"),
+    model: str = Form(..., description="Model to use for transcription"),
+    language: Optional[str] = Form(None, description="Language of the audio (ISO-639-1)"),
+    prompt: Optional[str] = Form(None, description="Optional prompt to guide transcription"),
+    response_format: str = Form("json", description="Format: json, text, verbose_json, srt, vtt"),
+    temperature: float = Form(0.0, ge=0.0, le=1.0, description="Sampling temperature"),
+):
+    """
+    Transcribe audio to text.
+
+    OpenAI-compatible transcription endpoint. Accepts audio files and returns
+    transcribed text using whisper.cpp.
+
+    Supported formats: mp3, mp4, mpeg, mpga, m4a, wav, webm, flac, ogg
+    """
+    logger.info("[highlight]POST /v1/audio/transcriptions[/highlight]")
+    logger.info(f"  Model: {model}")
+    logger.info(f"  File: {file.filename} ({file.content_type})")
+    logger.info(f"  Language: {language or 'auto-detect'}")
+    logger.info(f"  Response format: {response_format}")
+
+    auto_loader = get_auto_loader()
+
+    # Validate file type
+    allowed_types = [
+        "audio/mpeg", "audio/mp3", "audio/mp4", "audio/m4a",
+        "audio/wav", "audio/x-wav", "audio/webm", "audio/flac",
+        "audio/ogg", "video/mp4", "video/webm",
+    ]
+
+    # Also check by extension
+    allowed_extensions = [
+        ".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm", ".flac", ".ogg"
+    ]
+
+    file_ext = Path(file.filename).suffix.lower() if file.filename else ""
+    content_type = file.content_type or ""
+
+    if content_type not in allowed_types and file_ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported audio format. Supported: {', '.join(allowed_extensions)}"
+        )
+
+    # Ensure model is loaded
+    try:
+        server_url = await auto_loader.ensure_model_loaded(model)
+    except Exception as e:
+        logger.error(f"[error]Failed to load model: {e}[/error]")
+        raise HTTPException(status_code=503, detail=f"Failed to load model: {e}")
+
+    logger.debug(f"  Server URL: {server_url}")
+
+    # Save uploaded file to temp location
+    temp_dir = tempfile.mkdtemp()
+    temp_path = Path(temp_dir) / (file.filename or "audio.wav")
+
+    try:
+        # Write uploaded content to temp file
+        content = await file.read()
+        temp_path.write_bytes(content)
+        logger.debug(f"  Saved to temp file: {temp_path} ({len(content)} bytes)")
+
+        # Call whisper-server inference endpoint
+        async with httpx.AsyncClient(timeout=300) as client:
+            # whisper.cpp server accepts POST /inference with multipart form
+            with open(temp_path, "rb") as audio_file:
+                files = {"file": (file.filename, audio_file, content_type or "audio/wav")}
+                data = {
+                    "temperature": str(temperature),
+                    "response_format": response_format,
+                }
+
+                if language:
+                    data["language"] = language
+                if prompt:
+                    data["prompt"] = prompt
+
+                response = await client.post(
+                    f"{server_url}/inference",
+                    files=files,
+                    data=data,
+                )
+
+                if response.status_code >= 400:
+                    logger.error(
+                        "[error]whisper-server error %s: %s[/error]",
+                        response.status_code,
+                        response.text.strip()[:500],
+                    )
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Transcription failed: {response.text[:200]}"
+                    )
+
+                is_json = response_format in ("json", "verbose_json")
+                result = response.json() if is_json else response.text
+
+    except httpx.HTTPError as e:
+        logger.error(f"[error]Transcription request failed: {e}[/error]")
+        raise HTTPException(status_code=502, detail=f"Inference server error: {e}")
+    finally:
+        # Cleanup temp file
+        try:
+            temp_path.unlink()
+            Path(temp_dir).rmdir()
+        except Exception:
+            pass
+
+    await auto_loader.record_request(model)
+
+    # Return response based on format
+    if response_format == "text":
+        if isinstance(result, dict):
+            return PlainTextResponse(result.get("text", ""))
+        return PlainTextResponse(str(result))
+
+    if response_format in ("srt", "vtt"):
+        return PlainTextResponse(str(result), media_type="text/plain")
+
+    # JSON formats
+    if isinstance(result, dict):
+        # Parse whisper.cpp response into OpenAI format
+        segments = None
+        if response_format == "verbose_json" and "segments" in result:
+            segments = [
+                TranscriptionSegment(
+                    id=i,
+                    seek=seg.get("seek", 0),
+                    start=seg.get("start", 0.0),
+                    end=seg.get("end", 0.0),
+                    text=seg.get("text", ""),
+                    tokens=seg.get("tokens", []),
+                    temperature=seg.get("temperature", 0.0),
+                    avg_logprob=seg.get("avg_logprob", 0.0),
+                    compression_ratio=seg.get("compression_ratio", 0.0),
+                    no_speech_prob=seg.get("no_speech_prob", 0.0),
+                )
+                for i, seg in enumerate(result.get("segments", []))
+            ]
+
+        response_obj = TranscriptionResponse(
+            text=result.get("text", ""),
+            language=result.get("language", language),
+            duration=result.get("duration"),
+            segments=segments,
+        )
+
+        logger.info(f"[success]Transcription complete: {len(response_obj.text)} chars[/success]")
+        return response_obj
+
+    # Fallback: return raw result
+    return {"text": str(result)}
+
+
+@router.post("/audio/translations", response_model=None)
+async def translations(
+    file: UploadFile = File(..., description="Audio file to translate"),
+    model: str = Form(..., description="Model to use for translation"),
+    prompt: Optional[str] = Form(None, description="Optional prompt to guide translation"),
+    response_format: str = Form("json", description="Format: json, text, verbose_json, srt, vtt"),
+    temperature: float = Form(0.0, ge=0.0, le=1.0, description="Sampling temperature"),
+):
+    """
+    Translate audio to English text.
+
+    OpenAI-compatible translation endpoint. Translates audio in any supported
+    language to English text.
+    """
+    logger.info("[highlight]POST /v1/audio/translations[/highlight]")
+    logger.info(f"  Model: {model}")
+    logger.info(f"  File: {file.filename}")
+
+    # For translation, we call transcription with task=translate and language=en
+    # whisper.cpp handles this via the translate task
+
+    auto_loader = get_auto_loader()
+
+    # Ensure model is loaded
+    try:
+        server_url = await auto_loader.ensure_model_loaded(model)
+    except Exception as e:
+        logger.error(f"[error]Failed to load model: {e}[/error]")
+        raise HTTPException(status_code=503, detail=f"Failed to load model: {e}")
+
+    # Save uploaded file to temp location
+    temp_dir = tempfile.mkdtemp()
+    temp_path = Path(temp_dir) / (file.filename or "audio.wav")
+
+    try:
+        content = await file.read()
+        temp_path.write_bytes(content)
+
+        async with httpx.AsyncClient(timeout=300) as client:
+            with open(temp_path, "rb") as audio_file:
+                files = {"file": (file.filename, audio_file, file.content_type or "audio/wav")}
+                data = {
+                    "temperature": str(temperature),
+                    "response_format": response_format,
+                    "translate": "true",  # Enable translation mode
+                }
+
+                if prompt:
+                    data["prompt"] = prompt
+
+                response = await client.post(
+                    f"{server_url}/inference",
+                    files=files,
+                    data=data,
+                )
+
+                if response.status_code >= 400:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Translation failed: {response.text[:200]}"
+                    )
+
+                is_json = response_format in ("json", "verbose_json")
+                result = response.json() if is_json else response.text
+
+    except httpx.HTTPError as e:
+        logger.error(f"[error]Translation request failed: {e}[/error]")
+        raise HTTPException(status_code=502, detail=f"Inference server error: {e}")
+    finally:
+        try:
+            temp_path.unlink()
+            Path(temp_dir).rmdir()
+        except Exception:
+            pass
+
+    await auto_loader.record_request(model)
+
+    if response_format == "text":
+        if isinstance(result, dict):
+            return PlainTextResponse(result.get("text", ""))
+        return PlainTextResponse(str(result))
+
+    if isinstance(result, dict):
+        from cyber_inference.models.schemas import TranslationResponse
+        return TranslationResponse(
+            text=result.get("text", ""),
+            language=result.get("language"),
+            duration=result.get("duration"),
+        )
+
+    return {"text": str(result)}

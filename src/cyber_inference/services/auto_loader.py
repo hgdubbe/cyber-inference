@@ -261,26 +261,38 @@ class AutoLoader:
             mmproj_path = Path(model_info["mmproj_path"])
             logger.debug(f"mmproj path from DB: {mmproj_path}")
 
-        # Check if it's an embedding model (by type or name patterns)
+        # Check model type
         model_type = model_info.get("model_type")
         is_embedding = model_type == "embedding"
+        is_transcription = model_type == "transcription"
 
-        # Auto-detect embedding models by name if type not set
-        if not is_embedding:
-            name_lower = model_name.lower()
+        # Auto-detect model types by name if type not set
+        name_lower = model_name.lower()
+
+        if not is_embedding and not is_transcription:
             embedding_patterns = ["embed", "bge", "e5-", "gte-", "stella", "nomic"]
+            transcription_patterns = ["whisper", "distil-whisper", "faster-whisper"]
+
             is_embedding = any(pattern in name_lower for pattern in embedding_patterns)
+            is_transcription = any(pattern in name_lower for pattern in transcription_patterns)
 
         if is_embedding:
             logger.info(f"  Model type: embedding")
+        elif is_transcription:
+            logger.info(f"  Model type: transcription (whisper)")
 
-        # Start the server with mmproj_path if available
-        proc = await pm.start_server(
-            model_name,
-            model_path,
-            embedding=is_embedding,
-            mmproj_path=mmproj_path,
-        )
+        # Start the appropriate server
+        if is_transcription:
+            # Use whisper-server for transcription models
+            proc = await pm.start_whisper_server(model_name, model_path)
+        else:
+            # Use llama-server for chat/embedding models
+            proc = await pm.start_server(
+                model_name,
+                model_path,
+                embedding=is_embedding,
+                mmproj_path=mmproj_path,
+            )
 
         if proc.status != "running":
             raise RuntimeError(f"Failed to start server: {proc.error_message}")
