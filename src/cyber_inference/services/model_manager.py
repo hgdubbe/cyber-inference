@@ -593,7 +593,7 @@ class ModelManager:
             for filename in filenames_to_check:
                 is_gguf = filename.endswith(".gguf") and not self._is_mmproj_file(filename)
                 is_whisper_bin = filename.startswith("ggml-") and filename.endswith(".bin")
-                
+
                 if is_gguf or is_whisper_bin:
                     size = file_sizes.get(filename, 0)
                     quantization = self._extract_quant_suffix(filename)
@@ -640,10 +640,10 @@ class ModelManager:
 
             model_files = []
             mmproj_files = []
-            
+
             # Check if this is a whisper.cpp repo (contains ggml-*.bin files)
             is_whisper_repo = any(
-                f.startswith("ggml-") and f.endswith(".bin") 
+                f.startswith("ggml-") and f.endswith(".bin")
                 for f in file_sizes.keys()
             )
 
@@ -651,7 +651,7 @@ class ModelManager:
                 # Support both GGUF files and whisper.cpp bin files
                 is_gguf = filename.endswith(".gguf")
                 is_whisper_bin = filename.startswith("ggml-") and filename.endswith(".bin")
-                
+
                 if not (is_gguf or is_whisper_bin):
                     continue
 
@@ -904,7 +904,7 @@ class ModelManager:
             model_name = filename.replace(".bin", "")
         else:
             model_name = Path(filename).stem
-        
+
         # Read context length for GGUF files (not applicable to whisper bin)
         context_length = None
         if filename.endswith(".gguf"):
