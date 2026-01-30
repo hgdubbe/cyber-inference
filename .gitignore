@@ -30,7 +30,8 @@ wheels/
 venv/
 ENV/
 env/
-
+.crush/
+.ruff_cache/
 # Data
 data/
 
