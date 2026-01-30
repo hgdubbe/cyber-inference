@@ -915,32 +915,39 @@ class ModelManager:
                 # Auto-detect model type if not set
                 if not existing.model_type:
                     name_lower = model_name.lower()
+                    repo_lower = (repo_id or existing.hf_repo_id or "").lower()
+                    check_string = f"{name_lower} {repo_lower}"
+
                     embedding_patterns = ["embed", "bge", "e5-", "gte-", "stella", "nomic"]
                     transcription_patterns = ["whisper", "distil-whisper", "faster-whisper"]
 
-                    if any(pattern in name_lower for pattern in embedding_patterns):
+                    if any(pattern in check_string for pattern in embedding_patterns):
                         existing.model_type = "embedding"
-                        logger.info(f"  Auto-detected model type: embedding")
-                    elif any(pattern in name_lower for pattern in transcription_patterns):
+                        logger.info("  Auto-detected model type: embedding")
+                    elif any(pattern in check_string for pattern in transcription_patterns):
                         existing.model_type = "transcription"
-                        logger.info(f"  Auto-detected model type: transcription")
+                        logger.info("  Auto-detected model type: transcription")
 
                 await session.commit()
                 logger.debug(f"Updated existing model record: {model_name}")
                 return existing
 
-            # Auto-detect model type from name
+            # Auto-detect model type from name AND repo ID
             model_type = None
             name_lower = model_name.lower()
+            repo_lower = (repo_id or "").lower()
+            # Check both filename and repo ID for patterns
+            check_string = f"{name_lower} {repo_lower}"
+
             embedding_patterns = ["embed", "bge", "e5-", "gte-", "stella", "nomic"]
             transcription_patterns = ["whisper", "distil-whisper", "faster-whisper"]
 
-            if any(pattern in name_lower for pattern in embedding_patterns):
+            if any(pattern in check_string for pattern in embedding_patterns):
                 model_type = "embedding"
-                logger.info(f"  Auto-detected model type: embedding")
-            elif any(pattern in name_lower for pattern in transcription_patterns):
+                logger.info("  Auto-detected model type: embedding")
+            elif any(pattern in check_string for pattern in transcription_patterns):
                 model_type = "transcription"
-                logger.info(f"  Auto-detected model type: transcription")
+                logger.info("  Auto-detected model type: transcription")
 
             # Create new record
             model = Model(

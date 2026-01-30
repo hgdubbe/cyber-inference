@@ -266,15 +266,18 @@ class AutoLoader:
         is_embedding = model_type == "embedding"
         is_transcription = model_type == "transcription"
 
-        # Auto-detect model types by name if type not set
-        name_lower = model_name.lower()
-
+        # Auto-detect model types by name AND repo ID if type not set
         if not is_embedding and not is_transcription:
+            name_lower = model_name.lower()
+            repo_id = model_info.get("hf_repo_id") or ""
+            repo_lower = repo_id.lower()
+            check_string = f"{name_lower} {repo_lower}"
+
             embedding_patterns = ["embed", "bge", "e5-", "gte-", "stella", "nomic"]
             transcription_patterns = ["whisper", "distil-whisper", "faster-whisper"]
 
-            is_embedding = any(pattern in name_lower for pattern in embedding_patterns)
-            is_transcription = any(pattern in name_lower for pattern in transcription_patterns)
+            is_embedding = any(pattern in check_string for pattern in embedding_patterns)
+            is_transcription = any(pattern in check_string for pattern in transcription_patterns)
 
         if is_embedding:
             logger.info(f"  Model type: embedding")

@@ -387,22 +387,21 @@ class ProcessManager:
 
         # Build command
         whisper_server = self._whisper_installer.get_binary_path()
-        n_gpu_layers = gpu_layers if gpu_layers is not None else settings.llama_gpu_layers
         n_threads = threads or settings.llama_threads
 
         cmd = [
             str(whisper_server),
-            "--model", str(model_path),
+            "-m", str(model_path),
             "--port", str(port),
             "--host", "127.0.0.1",
         ]
 
-        # Add GPU layers if supported (some whisper builds support this)
-        if n_gpu_layers != 0:
-            cmd.extend(["--gpu-layers", str(n_gpu_layers)])
-
+        # Add threads
         if n_threads:
-            cmd.extend(["--threads", str(n_threads)])
+            cmd.extend(["-t", str(n_threads)])
+
+        # Enable flash attention for better performance
+        cmd.append("-fa")
 
         logger.debug(f"  Command: {' '.join(cmd)}")
 
@@ -411,7 +410,6 @@ class ProcessManager:
             model_name=model_name,
             model_path=model_path,
             port=port,
-            gpu_layers=n_gpu_layers,
             threads=n_threads,
             server_type="whisper",
         )
