@@ -327,7 +327,14 @@ class InstallationManager:
                     src_binary = repo_dir / f"{binary_name}.exe"
 
                 if src_binary.exists():
-                    dest_binary = self.bin_dir / src_binary.name
+                    # Rename 'server' to 'whisper-server' for consistency
+                    if binary_name == "server":
+                        if self.whisper_installer._platform == "windows":
+                            dest_binary = self.bin_dir / "whisper-server.exe"
+                        else:
+                            dest_binary = self.bin_dir / "whisper-server"
+                    else:
+                        dest_binary = self.bin_dir / src_binary.name
                     logger.debug(f"Copying {src_binary.name} to {dest_binary}")
                     shutil.copy2(src_binary, dest_binary)
                     dest_binary.chmod(0o755)
