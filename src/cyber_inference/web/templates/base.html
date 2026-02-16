@@ -397,6 +397,10 @@
             if (token) {
                 headers.set('Authorization', `Bearer ${token}`);
             }
+            // Set Content-Type for JSON requests if body is present and not already set
+            if (options.body && !headers.has('Content-Type')) {
+                headers.set('Content-Type', 'application/json');
+            }
             const response = await fetch(url, { ...options, headers });
             if (response.status === 401 && !window.location.pathname.startsWith('/login')) {
                 window.clearAdminToken();
