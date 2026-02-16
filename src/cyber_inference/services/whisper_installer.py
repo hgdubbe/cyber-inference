@@ -20,9 +20,13 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cyber_inference.core.config import get_settings
+from cyber_inference.core.database import get_db_session
 from cyber_inference.core.logging import get_logger
+from cyber_inference.models.db_models import Configuration
 
 logger = get_logger(__name__)
 
@@ -332,18 +336,45 @@ class WhisperInstaller:
         """
         Get the path to the whisper-server binary.
 
-        Checks system PATH first, then falls back to bin_dir.
+        Checks saved path from database first, then system PATH, then falls back to bin_dir.
         """
+        # First, try to get saved path from database (synchronous check of cached value)
+        # Note: We use a simple cached attribute to avoid blocking on database access
+        if hasattr(self, '_cached_binary_path') and self._cached_binary_path:
+            if self._cached_binary_path.exists():
+                return self._cached_binary_path
+        
         # Check system PATH first
         system_binary = self._find_system_binary()
         if system_binary is not None:
+            self._cached_binary_path = system_binary
             return system_binary
 
         # Fall back to bin_dir
         whisper_server_path = self.bin_dir / "whisper-server"
         if self._platform == "windows":
             whisper_server_path = self.bin_dir / "whisper-server.exe"
+        
+        if whisper_server_path.exists():
+            self._cached_binary_path = whisper_server_path
+        
         return whisper_server_path
+    
+    async def _get_saved_binary_path_from_db(self) -> Optional[Path]:
+        """Get saved binary path from database."""
+        try:
+            async with get_db_session() as session:
+                stmt = select(Configuration).where(Configuration.key == "binary_path_whisper")
+                result = await session.execute(stmt)
+                config = result.scalar_one_or_none()
+                
+                if config and config.value:
+                    path = Path(config.value)
+                    if path.exists():
+                        return path
+        except Exception:
+            pass
+        return None
 
     async def install(
         self,

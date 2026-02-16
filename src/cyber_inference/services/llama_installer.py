@@ -23,9 +23,13 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cyber_inference.core.config import get_settings
+from cyber_inference.core.database import get_db_session
 from cyber_inference.core.logging import get_logger
+from cyber_inference.models.db_models import Configuration
 
 logger = get_logger(__name__)
 
@@ -469,10 +473,31 @@ class LlamaInstaller:
         # Check system PATH first
         system_binary = self._find_system_binary()
         if system_binary is not None:
+            self._cached_binary_path = system_binary
             return system_binary
 
         # Fall back to bin_dir
         llama_server_path = self.bin_dir / "llama-server"
         if self._platform == "windows":
             llama_server_path = self.bin_dir / "llama-server.exe"
+        
+        if llama_server_path.exists():
+            self._cached_binary_path = llama_server_path
+        
         return llama_server_path
+    
+    async def _get_saved_binary_path_from_db(self) -> Optional[Path]:
+        """Get saved binary path from database."""
+        try:
+            async with get_db_session() as session:
+                stmt = select(Configuration).where(Configuration.key == "binary_path_llama")
+                result = await session.execute(stmt)
+                config = result.scalar_one_or_none()
+                
+                if config and config.value:
+                    path = Path(config.value)
+                    if path.exists():
+                        return path
+        except Exception:
+            pass
+        return None

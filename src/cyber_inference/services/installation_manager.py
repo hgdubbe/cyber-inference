@@ -13,8 +13,13 @@ import shutil
 from pathlib import Path
 from typing import Literal, Optional
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from cyber_inference.core.config import get_settings
+from cyber_inference.core.database import get_db_session
 from cyber_inference.core.logging import get_logger
+from cyber_inference.models.db_models import Configuration
 from cyber_inference.services.llama_installer import LlamaInstaller
 from cyber_inference.services.whisper_installer import WhisperInstaller
 
@@ -101,6 +106,54 @@ class InstallationManager:
         logger.debug(f"System requirements: {tools}")
         return tools
 
+    async def _save_binary_path(self, binary_name: str, path: Path) -> None:
+        """Save binary installation path to database."""
+        key = f"binary_path_{binary_name}"
+        try:
+            async with get_db_session() as session:
+                # Check if exists
+                stmt = select(Configuration).where(Configuration.key == key)
+                result = await session.execute(stmt)
+                config = result.scalar_one_or_none()
+                
+                if config:
+                    config.value = str(path)
+                else:
+                    config = Configuration(
+                        key=key,
+                        value=str(path),
+                        value_type="string",
+                        description=f"Installed path for {binary_name} binary"
+                    )
+                    session.add(config)
+                
+                await session.commit()
+                logger.debug(f"Saved {binary_name} path to database: {path}")
+        except Exception as e:
+            logger.warning(f"Failed to save {binary_name} path to database: {e}")
+
+    async def _get_saved_binary_path(self, binary_name: str) -> Optional[Path]:
+        """Get saved binary installation path from database."""
+        key = f"binary_path_{binary_name}"
+        try:
+            async with get_db_session() as session:
+                stmt = select(Configuration).where(Configuration.key == key)
+                result = await session.execute(stmt)
+                config = result.scalar_one_or_none()
+                
+                if config and config.value:
+                    path = Path(config.value)
+                    if path.exists():
+                        logger.debug(f"Found saved {binary_name} path: {path}")
+                        return path
+                    else:
+                        logger.debug(f"Saved {binary_name} path no longer exists: {path}")
+                        return None
+        except Exception as e:
+            logger.debug(f"Failed to load {binary_name} path from database: {e}")
+        
+        return None
+
     async def install_llama_from_release(
         self,
         backend: Optional[str] = None,
@@ -123,6 +176,10 @@ class InstallationManager:
             success = await self.llama_installer.install(backend=backend)
 
             if success:
+                # Save binary path to database
+                binary_path = self.llama_installer.get_binary_path()
+                await self._save_binary_path("llama", binary_path)
+                
                 version = await self.llama_installer.get_installed_version()
                 logger.info(f"[success]Successfully installed llama.cpp {version}[/success]")
                 return True
@@ -181,43 +238,72 @@ class InstallationManager:
                     check=True,
                 )
 
-            # Build
-            logger.info("[info]Building llama.cpp[/info]")
+            # Build using CMake
+            logger.info("[info]Building llama.cpp with CMake[/info]")
 
             import subprocess
 
-            # Detect GPU backend for build flags
+            build_dir = repo_dir / "build"
+            
+            # Detect GPU backend for CMake flags
             backend = await self.llama_installer.detect_gpu_backend()
-            build_cmd = ["make", "-C", str(repo_dir)]
-
+            cmake_flags = []
+            
             if backend == "cuda":
-                build_cmd.extend(["CUDA_PATH=/usr/local/cuda"])
-
-            logger.debug(f"Build command: {' '.join(build_cmd)}")
-            result = subprocess.run(build_cmd, capture_output=True, text=True, timeout=600)
+                cmake_flags.append("-DGGML_CUDA=ON")
+            elif backend == "metal":
+                cmake_flags.append("-DGGML_METAL=ON")
+            
+            # Run cmake to configure build
+            cmake_cmd = ["cmake", "-B", str(build_dir)] + cmake_flags + [str(repo_dir)]
+            logger.debug(f"CMake command: {' '.join(cmake_cmd)}")
+            result = subprocess.run(cmake_cmd, capture_output=True, text=True, timeout=600)
+            
+            if result.returncode != 0:
+                logger.error(f"[error]CMake configuration failed:[/error]")
+                logger.error(result.stderr)
+                return False
+            
+            # Run cmake build
+            build_invoke_cmd = ["cmake", "--build", str(build_dir), "--config", "Release"]
+            logger.debug(f"Build command: {' '.join(build_invoke_cmd)}")
+            result = subprocess.run(build_invoke_cmd, capture_output=True, text=True, timeout=600)
 
             if result.returncode != 0:
-                logger.error(f"[error]Build failed: {result.stderr}[/error]")
+                logger.error(f"[error]Build failed:[/error]")
+                logger.error(result.stderr)
                 return False
 
-            # Copy binary
+            # Copy binary - llama.cpp builds llama-server in build/bin/
             binary_name = "llama-server"
             if self.llama_installer._platform == "windows":
                 binary_name = "llama-server.exe"
-
-            src_binary = repo_dir / binary_name
+            
+            src_binary = build_dir / "bin" / binary_name
             if not src_binary.exists():
-                src_binary = repo_dir / "build" / "bin" / binary_name
-
+                # Fallback to build directory root
+                src_binary = build_dir / binary_name
+            
             if not src_binary.exists():
-                logger.error(f"[error]Built binary not found at {src_binary}[/error]")
+                # Last fallback to repo root
+                src_binary = repo_dir / binary_name
+            
+            if not src_binary.exists():
+                logger.error(f"[error]Built binary not found - checked:[/error]")
+                logger.error(f"  {build_dir / 'bin' / binary_name}")
+                logger.error(f"  {build_dir / binary_name}")
+                logger.error(f"  {repo_dir / binary_name}")
                 return False
 
             dest_binary = self.bin_dir / binary_name
-            logger.info(f"[info]Copying binary to {dest_binary}[/info]")
+            logger.info(f"[info]Copying binary from {src_binary} to {dest_binary}[/info]")
             shutil.copy2(src_binary, dest_binary)
             dest_binary.chmod(0o755)
 
+            # Save binary path to database
+            binary_path = self.llama_installer.get_binary_path()
+            await self._save_binary_path("llama", binary_path)
+            
             version = await self.llama_installer.get_installed_version()
             logger.info(f"[success]Successfully built llama.cpp {version}[/success]")
             return True
@@ -248,6 +334,10 @@ class InstallationManager:
             success = await self.whisper_installer.install(backend=backend)
 
             if success:
+                # Save binary path to database
+                binary_path = self.whisper_installer.get_binary_path()
+                await self._save_binary_path("whisper", binary_path)
+                
                 version = await self.whisper_installer.get_installed_version()
                 logger.info(f"[success]Successfully installed whisper.cpp {version}[/success]")
                 return True
@@ -382,6 +472,10 @@ class InstallationManager:
                 logger.error(f"[error]Found {copied_count} binaries in {self.bin_dir}[/error]")
                 return False
 
+            # Save binary path to database
+            binary_path = self.whisper_installer.get_binary_path()
+            await self._save_binary_path("whisper", binary_path)
+            
             version = await self.whisper_installer.get_installed_version()
             logger.info(f"[success]Successfully built whisper.cpp {version}[/success]")
             return True
