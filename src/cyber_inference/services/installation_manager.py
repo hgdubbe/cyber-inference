@@ -257,7 +257,7 @@ class InstallationManager:
             # Run cmake to configure build
             cmake_cmd = ["cmake", "-B", str(build_dir)] + cmake_flags + [str(repo_dir)]
             logger.debug(f"CMake command: {' '.join(cmake_cmd)}")
-            result = subprocess.run(cmake_cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(cmake_cmd, capture_output=True, text=True, timeout=1800)
             
             if result.returncode != 0:
                 logger.error(f"[error]CMake configuration failed:[/error]")
@@ -265,9 +265,9 @@ class InstallationManager:
                 return False
             
             # Run cmake build
-            build_invoke_cmd = ["cmake", "--build", str(build_dir), "--config", "Release"]
+            build_invoke_cmd = ["cmake", "--build", str(build_dir), "--config", "Release", "--parallel"]
             logger.debug(f"Build command: {' '.join(build_invoke_cmd)}")
-            result = subprocess.run(build_invoke_cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(build_invoke_cmd, capture_output=True, text=True, timeout=1800)
 
             if result.returncode != 0:
                 logger.error(f"[error]Build failed:[/error]")
@@ -406,7 +406,7 @@ class InstallationManager:
             # Run cmake to configure build
             cmake_cmd = ["cmake", "-B", str(build_dir), str(repo_dir)]
             logger.debug(f"CMake command: {' '.join(cmake_cmd)}")
-            result = subprocess.run(cmake_cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(cmake_cmd, capture_output=True, text=True, timeout=1800)
             
             if result.returncode != 0:
                 logger.error(f"[error]CMake configuration failed:[/error]")
@@ -414,9 +414,9 @@ class InstallationManager:
                 return False
             
             # Run make to build
-            make_cmd = ["make", "-C", str(build_dir)]
+            make_cmd = ["make", "-C", str(build_dir), "-j"]
             logger.debug(f"Make command: {' '.join(make_cmd)}")
-            result = subprocess.run(make_cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(make_cmd, capture_output=True, text=True, timeout=1800)
 
             if result.returncode != 0:
                 logger.error(f"[error]Build failed:[/error]")
