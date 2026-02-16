@@ -63,6 +63,9 @@ class Model(Base):
         String(50), nullable=True, default="llama"
     )  # "llama", "whisper", "transformers"
 
+    # Chat template preference for this model
+    selected_chat_template: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     # Model card info (cached from HuggingFace)
     model_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # chat, completion, embedding
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

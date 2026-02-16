@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default_factory=lambda: Path.cwd() / "data", description="Data directory")
     models_dir: Path = Field(default_factory=lambda: Path.cwd() / "models", description="Models directory")
     bin_dir: Path = Field(default_factory=lambda: Path.cwd() / "bin", description="Binary directory for llama.cpp")
+    chat_templates_dir: Optional[Path] = Field(default=None, description="Custom chat templates directory")
 
     # Database
     database_name: str = Field(default="cyber-inference.db", description="Database filename")
@@ -122,6 +123,10 @@ class Settings(BaseSettings):
             self.log_dir,
             self.transformers_models_dir,
         ]
+        # Add optional chat templates directory if configured
+        if self.chat_templates_dir:
+            directories.append(self.chat_templates_dir)
+        
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
             logger.debug(f"Ensured directory exists: {directory}")

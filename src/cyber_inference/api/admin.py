@@ -769,3 +769,261 @@ async def shutdown_server(
     asyncio.create_task(delayed_shutdown())
 
     return {"status": "shutting_down"}
+
+
+# =============================================================================
+# Chat Template Endpoints
+# =============================================================================
+
+@router.get("/chat-templates")
+async def get_chat_templates(
+    _: bool = Depends(verify_admin_token),
+) -> dict:
+    """
+    Get list of available chat templates.
+    """
+    logger.debug("[info]GET /admin/chat-templates[/info]")
+
+    from cyber_inference.main import get_chat_template_manager
+
+    manager = get_chat_template_manager()
+    templates = manager.get_available_templates()
+
+    return {
+        "templates": templates,
+        "total": len(templates),
+        "default": "default",
+    }
+
+
+@router.get("/chat-templates/{name}")
+async def get_chat_template(
+    name: str,
+    _: bool = Depends(verify_admin_token),
+) -> dict:
+    """
+    Get information about a specific chat template.
+    """
+    logger.debug(f"[info]GET /admin/chat-templates/{name}[/info]")
+
+    from cyber_inference.main import get_chat_template_manager
+
+    manager = get_chat_template_manager()
+    info = manager.get_template_info(name)
+
+    if not info:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Template '{name}' not found",
+        )
+
+    return info
+
+
+@router.post("/validate-chat-templates")
+async def validate_chat_templates(
+    _: bool = Depends(verify_admin_token),
+) -> dict:
+    """
+    Validate all custom chat templates.
+    """
+    logger.info("[info]POST /admin/validate-chat-templates[/info]")
+
+    from cyber_inference.main import get_chat_template_manager
+
+    manager = get_chat_template_manager()
+    results = manager.validate_templates()
+
+    return {
+        "results": results,
+        "valid": all(v is True for v in results.values()),
+    }
+
+
+@router.post("/chat-templates/preview")
+async def preview_chat_template(
+    payload: dict,
+    _: bool = Depends(verify_admin_token),
+) -> dict:
+    """
+    Preview a rendered chat template.
+
+    Request body:
+    {
+        "template_name": "llama2",
+        "messages": [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"}
+        ],
+        "system_prompt": "You are a helpful assistant."
+    }
+    """
+    logger.info("[info]POST /admin/chat-templates/preview[/info]")
+
+    from cyber_inference.main import get_chat_template_manager
+
+    manager = get_chat_template_manager()
+
+    template_name = payload.get("template_name", "default")
+    messages = payload.get("messages", [])
+    system_prompt = payload.get("system_prompt")
+
+    try:
+        rendered = manager.render_chat_template(
+            template_name,
+            messages,
+            system_prompt,
+        )
+        return {
+            "template": template_name,
+            "rendered": rendered,
+        }
+    except Exception as e:
+        logger.error(f"[error]Failed to render template: {e}[/error]")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to render template: {str(e)}",
+        )
+
+
+# =============================================================================
+# Binary Installation Endpoints
+# =============================================================================
+
+@router.get("/binaries/status")
+async def get_binary_status(
+    _: bool = Depends(verify_admin_token),
+) -> dict:
+    """
+    Get installation status for all binaries (llama.cpp, whisper.cpp).
+    """
+    logger.debug("[info]GET /admin/binaries/status[/info]")
+
+    from cyber_inference.main import get_installation_manager
+
+    manager = get_installation_manager()
+    status = await manager.get_installation_status()
+
+    return status
+
+
+@router.post("/binaries/install")
+async def install_binary(
+    payload: dict,
+    _: bool = Depends(verify_admin_token),
+) -> dict:
+    """
+    Install a binary from release or source.
+
+    Request body:
+    {
+        "binary": "llama" | "whisper",
+        "source": "release" | "source",
+        "branch": "master" (for source builds)
+    }
+    """
+    logger.info("[info]POST /admin/binaries/install[/info]")
+
+    from cyber_inference.main import get_installation_manager
+
+    binary = payload.get("binary")
+    source = payload.get("source", "release")
+    branch = payload.get("branch", "master")
+
+    if binary not in ("llama", "whisper"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Binary must be 'llama' or 'whisper'",
+        )
+
+    if source not in ("release", "source"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Source must be 'release' or 'source'",
+        )
+
+    manager = get_installation_manager()
+
+    try:
+        if binary == "llama":
+            if source == "release":
+                success = await manager.install_llama_from_release()
+            else:
+                success = await manager.install_llama_from_source(branch=branch)
+        else:  # whisper
+            if source == "release":
+                success = await manager.install_whisper_from_release()
+            else:
+                success = await manager.install_whisper_from_source(branch=branch)
+
+        if success:
+            status_info = await manager.get_installation_status()
+            installed_version = None
+            if binary == "llama":
+                installed_version = status_info["llama"]["version"]
+            else:
+                installed_version = status_info["whisper"]["version"]
+
+            return {
+                "success": True,
+                "message": f"Successfully installed {binary}.cpp",
+                "binary": binary,
+                "version": installed_version,
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Failed to install {binary}.cpp",
+                "binary": binary,
+            }
+    except Exception as e:
+        logger.error(f"[error]Installation error: {e}[/error]")
+        return {
+            "success": False,
+            "message": f"Installation error: {str(e)}",
+            "binary": binary,
+        }
+
+
+@router.post("/binaries/check-requirements")
+async def check_system_requirements(
+    _: bool = Depends(verify_admin_token),
+) -> dict:
+    """
+    Check system requirements for building binaries from source.
+    """
+    logger.info("[info]POST /admin/binaries/check-requirements[/info]")
+
+    from cyber_inference.main import get_installation_manager
+
+    manager = get_installation_manager()
+    requirements = await manager.get_system_requirements()
+
+    return requirements
+
+
+@router.get("/binaries/versions")
+async def get_available_versions(
+    _: bool = Depends(verify_admin_token),
+) -> dict:
+    """
+    Get available and installed versions of binaries.
+    """
+    logger.debug("[info]GET /admin/binaries/versions[/info]")
+
+    from cyber_inference.main import get_installation_manager
+
+    manager = get_installation_manager()
+
+    installed_status = await manager.get_installation_status()
+
+    return {
+        "llama": {
+            "installed_version": installed_status["llama"]["version"],
+            "installed": installed_status["llama"]["installed"],
+        },
+        "whisper": {
+            "installed_version": installed_status["whisper"]["version"],
+            "installed": installed_status["whisper"]["installed"],
+        },
+    }

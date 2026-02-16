@@ -298,5 +298,161 @@ def version() -> None:
     console.print(f"  License: [yellow]GPLv3[/yellow]\n")
 
 
+# =============================================================================
+# Binary Installation Commands
+# =============================================================================
+
+@app.command()
+def install_llama(
+    from_source: bool = typer.Option(False, "--from-source", "-s", help="Build from source instead of downloading release"),
+    branch: str = typer.Option("master", "--branch", "-b", help="Git branch to build from (only with --from-source)"),
+    bin_dir: Optional[Path] = typer.Option(None, "--bin-dir", help="Binary directory path"),
+) -> None:
+    """
+    Install or update llama.cpp.
+
+    By default, downloads the latest precompiled release for your platform.
+    Use --from-source to build from source (requires git, cmake, gcc/clang).
+    """
+    setup_logging()
+    logger.info("[highlight]Installing llama.cpp[/highlight]")
+
+    if bin_dir is None:
+        bin_dir = Path.cwd() / "bin"
+
+    from cyber_inference.services.installation_manager import InstallationManager
+
+    async def _install():
+        manager = InstallationManager()
+        
+        if from_source:
+            console.print(f"[bright_yellow]Building from source (branch: {branch})...[/bright_yellow]")
+            success = await manager.install_llama_from_source(branch=branch)
+        else:
+            console.print("[bright_yellow]Downloading latest release...[/bright_yellow]")
+            success = await manager.install_llama_from_release()
+
+        if success:
+            status = await manager.get_installation_status()
+            version = status["llama"]["version"]
+            path = status["llama"]["path"]
+            console.print(f"[bright_green]✓ Successfully installed llama.cpp[/bright_green]")
+            console.print(f"  Version: {version}")
+            console.print(f"  Path: {path}")
+        else:
+            console.print("[red]✗ Failed to install llama.cpp[/red]")
+            raise typer.Exit(1)
+
+    try:
+        asyncio.run(_install())
+    except Exception as e:
+        logger.error(f"Installation error: {e}")
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def install_whisper(
+    from_source: bool = typer.Option(False, "--from-source", "-s", help="Build from source instead of downloading release"),
+    branch: str = typer.Option("master", "--branch", "-b", help="Git branch to build from (only with --from-source)"),
+    bin_dir: Optional[Path] = typer.Option(None, "--bin-dir", help="Binary directory path"),
+) -> None:
+    """
+    Install or update whisper.cpp.
+
+    By default, downloads the latest precompiled release for your platform.
+    Use --from-source to build from source (requires git, cmake, gcc/clang).
+    """
+    setup_logging()
+    logger.info("[highlight]Installing whisper.cpp[/highlight]")
+
+    if bin_dir is None:
+        bin_dir = Path.cwd() / "bin"
+
+    from cyber_inference.services.installation_manager import InstallationManager
+
+    async def _install():
+        manager = InstallationManager()
+        
+        if from_source:
+            console.print(f"[bright_yellow]Building from source (branch: {branch})...[/bright_yellow]")
+            success = await manager.install_whisper_from_source(branch=branch)
+        else:
+            console.print("[bright_yellow]Downloading latest release...[/bright_yellow]")
+            success = await manager.install_whisper_from_release()
+
+        if success:
+            status = await manager.get_installation_status()
+            version = status["whisper"]["version"]
+            path = status["whisper"]["path"]
+            console.print(f"[bright_green]✓ Successfully installed whisper.cpp[/bright_green]")
+            console.print(f"  Version: {version}")
+            console.print(f"  Path: {path}")
+        else:
+            console.print("[red]✗ Failed to install whisper.cpp[/red]")
+            raise typer.Exit(1)
+
+    try:
+        asyncio.run(_install())
+    except Exception as e:
+        logger.error(f"Installation error: {e}")
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def binary_status(
+    bin_dir: Optional[Path] = typer.Option(None, "--bin-dir", help="Binary directory path"),
+) -> None:
+    """
+    Check installation status of binaries.
+
+    Shows whether llama.cpp and whisper.cpp are installed,
+    their versions, and system requirements.
+    """
+    setup_logging()
+    logger.info("[highlight]Checking binary status[/highlight]")
+
+    from cyber_inference.services.installation_manager import InstallationManager
+
+    async def _status():
+        manager = InstallationManager()
+        status = await manager.get_installation_status()
+        requirements = status.get("requirements", {})
+
+        console.print("\n[bold bright_cyan]Binary Installation Status[/bold bright_cyan]\n")
+
+        # llama.cpp status
+        llama = status["llama"]
+        llama_status = "✓ Installed" if llama["installed"] else "✗ Not installed"
+        llama_color = "bright_green" if llama["installed"] else "dim"
+        console.print(f"[{llama_color}]{llama_status}[/{llama_color}] llama.cpp")
+        if llama["installed"]:
+            console.print(f"  Version: {llama['version']}")
+            console.print(f"  Path: {llama['path']}")
+            console.print(f"  GPU Backend: {llama['gpu_backend']}")
+        console.print()
+
+        # whisper.cpp status
+        whisper = status["whisper"]
+        whisper_status = "✓ Installed" if whisper["installed"] else "✗ Not installed"
+        whisper_color = "bright_green" if whisper["installed"] else "dim"
+        console.print(f"[{whisper_color}]{whisper_status}[/{whisper_color}] whisper.cpp")
+        if whisper["installed"]:
+            console.print(f"  Version: {whisper['version']}")
+            console.print(f"  Path: {whisper['path']}")
+        console.print()
+
+        # Build requirements
+        console.print("[bold bright_cyan]Build Requirements[/bold bright_cyan]")
+        for tool, available in requirements.items():
+            tool_status = "✓" if available else "✗"
+            tool_color = "bright_green" if available else "yellow"
+            console.print(f"  [{tool_color}]{tool_status}[/{tool_color}] {tool}")
+        console.print()
+
+    asyncio.run(_status())
+
+
 if __name__ == "__main__":
     app()

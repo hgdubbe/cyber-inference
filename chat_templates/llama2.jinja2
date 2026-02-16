@@ -1,0 +1,5 @@
+{% if system_prompt %}[INST] <<SYS>>
+{{ system_prompt }}
+<</SYS>>
+
+{% else %}[INST] {% endif %}{% for msg in messages %}{% if msg.role == "user" %}{{ msg.content }} [/INST] {% elif msg.role == "assistant" %}{{ msg.content }} </s><s>[INST] {% endif %}{% endfor %}

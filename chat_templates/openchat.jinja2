@@ -1,0 +1,5 @@
+GPT4 Correct Assistant: {% if system_prompt %}{{ system_prompt }}
+
+{% endif %}{% for msg in messages %}{% if msg.role == "user" %}GPT4 Correct User: {{ msg.content }}<|end_of_turn|>
+{% elif msg.role == "assistant" %}GPT4 Correct Assistant: {{ msg.content }}<|end_of_turn|>
+{% endif %}{% endfor %}GPT4 Correct Assistant:

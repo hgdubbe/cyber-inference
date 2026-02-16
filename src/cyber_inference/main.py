@@ -28,6 +28,8 @@ from cyber_inference.core.logging import get_logger, setup_logging
 from cyber_inference.services.process_manager import ProcessManager
 from cyber_inference.services.resource_monitor import ResourceMonitor
 from cyber_inference.services.auto_loader import AutoLoader
+from cyber_inference.services.chat_template_manager import ChatTemplateManager
+from cyber_inference.services.installation_manager import InstallationManager
 from cyber_inference.api.websocket import setup_log_handler
 
 logger = get_logger(__name__)
@@ -36,6 +38,8 @@ logger = get_logger(__name__)
 process_manager: ProcessManager | None = None
 resource_monitor: ResourceMonitor | None = None
 auto_loader: AutoLoader | None = None
+chat_template_manager: ChatTemplateManager | None = None
+installation_manager: InstallationManager | None = None
 
 
 @asynccontextmanager
@@ -43,7 +47,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Manage application lifespan - startup and shutdown.
     """
-    global process_manager, resource_monitor, auto_loader
+    global process_manager, resource_monitor, auto_loader, chat_template_manager, installation_manager
 
     logger.info("[highlight]═══════════════════════════════════════════════════════════[/highlight]")
     logger.info("[highlight]           Cyber-Inference Starting Up                      [/highlight]")
@@ -63,6 +67,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("[success]Database initialized successfully[/success]")
 
     await apply_db_config_overrides(settings)
+
+    # Initialize chat template manager
+    logger.info("[info]Initializing chat template manager...[/info]")
+    chat_template_manager = ChatTemplateManager()
+    templates = chat_template_manager.get_available_templates()
+    logger.info(f"[success]Chat template manager initialized with {len(templates)} templates[/success]")
+    if templates:
+        logger.debug(f"  Available templates: {', '.join(templates)}")
+
+    # Initialize installation manager
+    logger.info("[info]Initializing installation manager...[/info]")
+    installation_manager = InstallationManager()
+    logger.info("[success]Installation manager initialized[/success]")
 
     # Initialize resource monitor
     logger.info("[info]Starting resource monitor...[/info]")
@@ -216,3 +233,17 @@ def get_auto_loader() -> AutoLoader:
     if auto_loader is None:
         raise RuntimeError("Auto-loader not initialized")
     return auto_loader
+
+
+def get_chat_template_manager() -> ChatTemplateManager:
+    """Get the global chat template manager instance."""
+    if chat_template_manager is None:
+        raise RuntimeError("Chat template manager not initialized")
+    return chat_template_manager
+
+
+def get_installation_manager() -> InstallationManager:
+    """Get the global installation manager instance."""
+    if installation_manager is None:
+        raise RuntimeError("Installation manager not initialized")
+    return installation_manager

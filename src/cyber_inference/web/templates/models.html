@@ -456,6 +456,16 @@
                            placeholder="1.0">
                 </div>
             </div>
+
+            <!-- Chat Template Selection -->
+            <div>
+                <label class="block text-xs font-mono text-gray-400 mb-1">Chat Template</label>
+                <select id="settingsChatTemplate"
+                        class="cyber-input w-full px-3 py-1.5 rounded-lg font-mono text-sm">
+                    <option value="">-- Default --</option>
+                </select>
+                <p class="text-xs text-gray-600 mt-1">Template for formatting messages in chat completions</p>
+            </div>
         </div>
         <div class="px-5 py-3 border-t border-cyber-gray flex justify-between shrink-0">
             <button onclick="resetSettings()"
@@ -1252,6 +1262,30 @@
             hint.textContent = '';
         }
 
+        // Load available chat templates
+        try {
+            const response = await adminFetch('/admin/chat-templates');
+            const data = await response.json();
+            const templateSelect = document.getElementById('settingsChatTemplate');
+            
+            // Clear existing options except the default one
+            while (templateSelect.options.length > 1) {
+                templateSelect.remove(1);
+            }
+            
+            // Add templates
+            if (data.templates) {
+                for (const template of data.templates) {
+                    const option = document.createElement('option');
+                    option.value = template;
+                    option.textContent = template;
+                    templateSelect.appendChild(option);
+                }
+            }
+        } catch (e) {
+            console.error('Error loading templates:', e);
+        }
+
         // Fetch current config
         try {
             const response = await adminFetch(`/admin/models/${encodeURIComponent(modelName)}/config`);
@@ -1263,6 +1297,7 @@
                 document.getElementById('settingsTopK').value = data.default_top_k ?? '';
                 document.getElementById('settingsMaxTokens').value = data.default_max_tokens ?? '';
                 document.getElementById('settingsRepeatPenalty').value = data.default_repeat_penalty ?? '';
+                document.getElementById('settingsChatTemplate').value = data.selected_chat_template ?? '';
             }
         } catch (e) {
             console.error('Error fetching model config:', e);
@@ -1285,6 +1320,7 @@
         document.getElementById('settingsTopK').value = '';
         document.getElementById('settingsMaxTokens').value = '';
         document.getElementById('settingsRepeatPenalty').value = '';
+        document.getElementById('settingsChatTemplate').value = '';
     }
 
     async function saveSettings() {
@@ -1308,6 +1344,7 @@
             default_top_k: parseNum('settingsTopK'),
             default_max_tokens: parseNum('settingsMaxTokens'),
             default_repeat_penalty: parseNum('settingsRepeatPenalty'),
+            selected_chat_template: document.getElementById('settingsChatTemplate').value || null,
         };
 
         try {

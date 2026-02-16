@@ -1,0 +1,3 @@
+[INST] {% if system_prompt %}{{ system_prompt }}
+
+{% endif %}{% for msg in messages %}{% if msg.role == "user" %}{{ msg.content }}{% elif msg.role == "assistant" %} [/INST] {{ msg.content }} [INST] {% endif %}{% endfor %}[/INST]

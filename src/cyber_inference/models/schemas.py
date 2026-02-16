@@ -75,6 +75,7 @@ class ChatCompletionRequest(BaseModel):
     presence_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     user: Optional[str] = Field(None, description="User identifier")
+    chat_template: Optional[str] = Field(None, description="Chat template to use for formatting messages")
 
 
 class ChatCompletionChoice(BaseModel):

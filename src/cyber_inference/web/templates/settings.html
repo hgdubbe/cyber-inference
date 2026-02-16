@@ -172,6 +172,87 @@
             </div>
         </form>
 
+        <!-- Binary Management Section -->
+        <div class="cyber-card rounded-xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-cyber-neon/20">
+                <h2 class="font-cyber text-xl font-semibold text-cyber-neon flex items-center space-x-2">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>BINARY MANAGEMENT</span>
+                </h2>
+            </div>
+            <div class="p-6 space-y-6">
+                <!-- Llama.cpp -->
+                <div class="border border-gray-700 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-mono font-semibold text-white">llama.cpp</h3>
+                        <span id="llama-status" class="text-xs font-mono px-3 py-1 rounded-full bg-gray-700 text-gray-300">Loading...</span>
+                    </div>
+                    <div id="llama-info" class="space-y-2 text-sm font-mono text-gray-400 mb-4"></div>
+                    <div class="flex gap-2">
+                        <button onclick="installBinary('llama', 'release')" class="cyber-btn px-4 py-2 rounded-lg text-sm">
+                            Install Release
+                        </button>
+                        <button onclick="installBinary('llama', 'source')" class="cyber-btn px-4 py-2 rounded-lg text-sm">
+                            Build from Source
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Whisper.cpp -->
+                <div class="border border-gray-700 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-mono font-semibold text-white">whisper.cpp</h3>
+                        <span id="whisper-status" class="text-xs font-mono px-3 py-1 rounded-full bg-gray-700 text-gray-300">Loading...</span>
+                    </div>
+                    <div id="whisper-info" class="space-y-2 text-sm font-mono text-gray-400 mb-4"></div>
+                    <div class="flex gap-2">
+                        <button onclick="installBinary('whisper', 'release')" class="cyber-btn px-4 py-2 rounded-lg text-sm">
+                            Install Release
+                        </button>
+                        <button onclick="installBinary('whisper', 'source')" class="cyber-btn px-4 py-2 rounded-lg text-sm">
+                            Build from Source
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Templates Section -->
+        <div class="cyber-card rounded-xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-cyber-neon/20">
+                <h2 class="font-cyber text-xl font-semibold text-cyber-neon flex items-center space-x-2">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v12a2 2 0 01-2 2l-4 4v-4" />
+                    </svg>
+                    <span>CHAT TEMPLATES</span>
+                </h2>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-mono text-gray-400 mb-2">Available Templates</label>
+                    <div id="templates-list" class="space-y-2">
+                        <div class="text-xs font-mono text-gray-500">Loading...</div>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-mono text-gray-400 mb-2">Custom Templates Directory</label>
+                    <div class="text-sm font-mono text-gray-300 p-3 rounded-lg bg-gray-900 border border-gray-700">
+                        <span id="templates-dir">{{ settings.chat_templates_dir or 'Not configured' }}</span>
+                    </div>
+                    <p class="text-xs text-gray-500 font-mono mt-2">
+                        Set CYBER_INFERENCE_CHAT_TEMPLATES_DIR environment variable to use custom templates
+                    </p>
+                </div>
+                <div>
+                    <button onclick="validateTemplates()" class="cyber-btn px-4 py-2 rounded-lg text-sm">
+                        Validate Custom Templates
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Security Settings -->
         <div class="cyber-card rounded-xl overflow-hidden">
             <div class="px-6 py-4 border-b border-cyber-neon/20">
@@ -810,5 +891,152 @@
             showToast({ tone: 'danger', message: 'Error shutting down server.' });
         }
     }
+
+    // =========================================================================
+    // Binary Management Functions
+    // =========================================================================
+
+    async function loadBinaryStatus() {
+        try {
+            const response = await adminFetch('/admin/binaries/status');
+            const status = await response.json();
+
+            // Update llama.cpp status
+            const llamaStatus = document.getElementById('llama-status');
+            const llamaInfo = document.getElementById('llama-info');
+            if (status.llama.installed) {
+                llamaStatus.textContent = '✓ INSTALLED';
+                llamaStatus.className = 'text-xs font-mono px-3 py-1 rounded-full bg-cyber-neon/20 text-cyber-neon';
+                llamaInfo.innerHTML = `
+                    <div>Version: ${status.llama.version || 'unknown'}</div>
+                    <div>GPU Backend: ${status.llama.gpu_backend}</div>
+                    <div>Path: ${status.llama.path || 'system PATH'}</div>
+                `;
+            } else {
+                llamaStatus.textContent = '✗ NOT INSTALLED';
+                llamaStatus.className = 'text-xs font-mono px-3 py-1 rounded-full bg-gray-700 text-gray-300';
+                llamaInfo.innerHTML = '<div class="text-gray-500">Not yet installed</div>';
+            }
+
+            // Update whisper.cpp status
+            const whisperStatus = document.getElementById('whisper-status');
+            const whisperInfo = document.getElementById('whisper-info');
+            if (status.whisper.installed) {
+                whisperStatus.textContent = '✓ INSTALLED';
+                whisperStatus.className = 'text-xs font-mono px-3 py-1 rounded-full bg-cyber-neon/20 text-cyber-neon';
+                whisperInfo.innerHTML = `
+                    <div>Version: ${status.whisper.version || 'unknown'}</div>
+                    <div>Path: ${status.whisper.path || 'system PATH'}</div>
+                `;
+            } else {
+                whisperStatus.textContent = '✗ NOT INSTALLED';
+                whisperStatus.className = 'text-xs font-mono px-3 py-1 rounded-full bg-gray-700 text-gray-300';
+                whisperInfo.innerHTML = '<div class="text-gray-500">Not yet installed</div>';
+            }
+        } catch (error) {
+            console.error('Error loading binary status:', error);
+        }
+    }
+
+    async function installBinary(binary, source) {
+        const branch = 'master';
+        const confirmed = await confirmAction({
+            tone: 'info',
+            title: `Install ${binary}.cpp`,
+            message: `Install ${binary}.cpp from ${source}?${source === 'source' ? ' This may take a while.' : ''}`,
+            confirmText: 'Install',
+            cancelText: 'Cancel',
+        });
+
+        if (!confirmed) return;
+
+        openModal({
+            tone: 'info',
+            title: `Installing ${binary}.cpp`,
+            message: `Installing from ${source}...`,
+            showConfirm: false,
+            showCancel: true,
+            onCancel: () => {},
+        });
+
+        try {
+            const response = await adminFetch('/admin/binaries/install', {
+                method: 'POST',
+                body: JSON.stringify({
+                    binary: binary,
+                    source: source,
+                    branch: branch,
+                }),
+            });
+
+            const result = await response.json();
+
+            closeModal();
+            if (result.success) {
+                showToast({ tone: 'success', message: `✓ ${binary}.cpp installed successfully` });
+                await loadBinaryStatus();
+            } else {
+                showToast({ tone: 'danger', message: `✗ Failed to install ${binary}.cpp: ${result.message}` });
+            }
+        } catch (error) {
+            closeModal();
+            console.error('Installation error:', error);
+            showToast({ tone: 'danger', message: `Error installing ${binary}.cpp` });
+        }
+    }
+
+    // =========================================================================
+    // Chat Template Functions
+    // =========================================================================
+
+    async function loadChatTemplates() {
+        try {
+            const response = await adminFetch('/admin/chat-templates');
+            const data = await response.json();
+            
+            const templatesList = document.getElementById('templates-list');
+            if (data.templates && data.templates.length > 0) {
+                templatesList.innerHTML = data.templates.map(template => `
+                    <div class="flex items-center justify-between p-2 rounded bg-gray-900 border border-gray-700">
+                        <span class="font-mono text-sm text-gray-300">${template}</span>
+                        ${template === data.default ? '<span class="text-xs text-cyber-neon font-mono">DEFAULT</span>' : ''}
+                    </div>
+                `).join('');
+            } else {
+                templatesList.innerHTML = '<div class="text-xs font-mono text-gray-500">No templates found</div>';
+            }
+        } catch (error) {
+            console.error('Error loading templates:', error);
+            document.getElementById('templates-list').innerHTML = '<div class="text-xs font-mono text-red-500">Error loading templates</div>';
+        }
+    }
+
+    async function validateTemplates() {
+        try {
+            const response = await adminFetch('/admin/validate-chat-templates', {
+                method: 'POST',
+            });
+            const result = await response.json();
+
+            if (result.valid) {
+                showToast({ tone: 'success', message: '✓ All templates are valid' });
+            } else {
+                const errors = Object.entries(result.results)
+                    .filter(([_, v]) => v !== true)
+                    .map(([name, error]) => `${name}: ${error}`)
+                    .join('\n');
+                showToast({ tone: 'warning', message: `⚠ Template validation errors:\n${errors}` });
+            }
+        } catch (error) {
+            console.error('Validation error:', error);
+            showToast({ tone: 'danger', message: 'Error validating templates' });
+        }
+    }
+
+    // Initialize on document load
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadBinaryStatus();
+        await loadChatTemplates();
+    });
 </script>
 {% endblock %}

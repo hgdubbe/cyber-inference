@@ -405,29 +405,89 @@ async def chat_completions(
     # Determine server type for engine-specific behavior
     server_type = _get_server_type(request.model)
 
-    # Prepare request for the inference server
-    token_limit = request.max_tokens or 512
-    llama_request = {
-        "messages": [
-            {
-                "role": m.role,
-                "content": _serialize_message_content(m.content),
-                **({"name": m.name} if m.name else {}),
+    # Prepare messages - check if chat template should be used
+    use_chat_template = request.chat_template is not None
+    if use_chat_template:
+        # Use chat template to render messages
+        from cyber_inference.main import get_chat_template_manager
+        
+        template_manager = get_chat_template_manager()
+        template_name = request.chat_template or "default"
+        
+        try:
+            # Convert message format for template rendering
+            messages_for_template = [
+                {
+                    "role": m.role,
+                    "content": _serialize_message_content(m.content),
+                }
+                for m in request.messages
+            ]
+            
+            # Get system prompt if present in messages
+            system_prompt = None
+            for msg in request.messages:
+                if msg.role == "system":
+                    system_prompt = _serialize_message_content(msg.content)
+                    break
+            
+            # Render template
+            rendered_prompt = template_manager.render_chat_template(
+                template_name,
+                messages_for_template,
+                system_prompt,
+            )
+            logger.debug(f"  Chat template '{template_name}' rendered successfully")
+            logger.debug(f"  Rendered prompt length: {len(rendered_prompt)} chars")
+            
+            # Use completion endpoint instead of chat endpoint for template-rendered prompts
+            token_limit = request.max_tokens or 512
+            llama_request = {
+                "prompt": rendered_prompt,
+                "temperature": request.temperature,
+                "top_p": request.top_p,
+                "n_predict": token_limit,
+                "stream": request.stream,
             }
-            for m in request.messages
-        ],
-        "temperature": request.temperature,
-        "top_p": request.top_p,
-        "max_tokens": token_limit,
-        "stream": request.stream,
-    }
+            
+            if request.stop:
+                llama_request["stop"] = request.stop if isinstance(request.stop, list) else [request.stop]
+                
+            # Flag that we're using template-based completion
+            is_template_completion = True
+            
+        except Exception as e:
+            logger.error(f"[error]Failed to render chat template '{template_name}': {e}[/error]")
+            logger.warning("[warning]Falling back to non-template chat completion[/warning]")
+            use_chat_template = False
+            is_template_completion = False
+    
+    # Prepare regular chat request if not using template
+    if not use_chat_template:
+        token_limit = request.max_tokens or 512
+        llama_request = {
+            "messages": [
+                {
+                    "role": m.role,
+                    "content": _serialize_message_content(m.content),
+                    **({"name": m.name} if m.name else {}),
+                }
+                for m in request.messages
+            ],
+            "temperature": request.temperature,
+            "top_p": request.top_p,
+            "max_tokens": token_limit,
+            "stream": request.stream,
+        }
 
-    # n_predict is llama.cpp-specific, not used by transformers
-    if server_type != "transformers":
-        llama_request["n_predict"] = token_limit
+        # n_predict is llama.cpp-specific, not used by transformers
+        if server_type != "transformers":
+            llama_request["n_predict"] = token_limit
 
-    if request.stop:
-        llama_request["stop"] = request.stop if isinstance(request.stop, list) else [request.stop]
+        if request.stop:
+            llama_request["stop"] = request.stop if isinstance(request.stop, list) else [request.stop]
+        
+        is_template_completion = False
 
     if request.stream:
         return EventSourceResponse(
@@ -437,8 +497,10 @@ async def chat_completions(
     # Non-streaming request
     try:
         async with httpx.AsyncClient(timeout=300) as client:
+            # Choose endpoint based on whether template was used
+            endpoint = "/v1/completions" if is_template_completion else "/v1/chat/completions"
             response = await client.post(
-                f"{server_url}/v1/chat/completions",
+                f"{server_url}{endpoint}",
                 json=llama_request,
             )
             if response.status_code >= 400:
@@ -456,20 +518,34 @@ async def chat_completions(
     # Update stats
     await auto_loader.record_request(request.model)
 
-    # Transform response
+    # Transform response - format differs between completions and chat.completions
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
 
     choices = []
-    for i, choice in enumerate(result.get("choices", [])):
-        raw_content = choice.get("message", {}).get("content", "")
-        choices.append(ChatCompletionChoice(
-            index=i,
-            message=ChatMessage(
-                role=choice.get("message", {}).get("role", "assistant"),
-                content=_normalize_channel_markers(raw_content),
-            ),
-            finish_reason=choice.get("finish_reason"),
-        ))
+    if is_template_completion:
+        # Convert /v1/completions response to chat.completions format
+        for i, choice in enumerate(result.get("choices", [])):
+            raw_content = choice.get("text", "")
+            choices.append(ChatCompletionChoice(
+                index=i,
+                message=ChatMessage(
+                    role="assistant",
+                    content=_normalize_channel_markers(raw_content),
+                ),
+                finish_reason=choice.get("finish_reason"),
+            ))
+    else:
+        # Standard /v1/chat/completions response format
+        for i, choice in enumerate(result.get("choices", [])):
+            raw_content = choice.get("message", {}).get("content", "")
+            choices.append(ChatCompletionChoice(
+                index=i,
+                message=ChatMessage(
+                    role=choice.get("message", {}).get("role", "assistant"),
+                    content=_normalize_channel_markers(raw_content),
+                ),
+                finish_reason=choice.get("finish_reason"),
+            ))
 
     usage = result.get("usage", {})
 
