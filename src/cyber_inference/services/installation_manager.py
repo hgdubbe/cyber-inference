@@ -306,38 +306,81 @@ class InstallationManager:
                     check=True,
                 )
 
-            # Build
-            logger.info("[info]Building whisper.cpp[/info]")
+            # Build using CMake
+            logger.info("[info]Building whisper.cpp with CMake[/info]")
 
             import subprocess
 
-            build_cmd = ["make", "-C", str(repo_dir)]
-            logger.debug(f"Build command: {' '.join(build_cmd)}")
-            result = subprocess.run(build_cmd, capture_output=True, text=True, timeout=600)
+            build_dir = repo_dir / "build"
+            
+            # Run cmake to configure build
+            cmake_cmd = ["cmake", "-B", str(build_dir), str(repo_dir)]
+            logger.debug(f"CMake command: {' '.join(cmake_cmd)}")
+            result = subprocess.run(cmake_cmd, capture_output=True, text=True, timeout=600)
+            
+            if result.returncode != 0:
+                logger.error(f"[error]CMake configuration failed:[/error]")
+                logger.error(result.stderr)
+                return False
+            
+            # Run make to build
+            make_cmd = ["make", "-C", str(build_dir)]
+            logger.debug(f"Make command: {' '.join(make_cmd)}")
+            result = subprocess.run(make_cmd, capture_output=True, text=True, timeout=600)
 
             if result.returncode != 0:
-                logger.error(f"[error]Build failed: {result.stderr}[/error]")
+                logger.error(f"[error]Build failed:[/error]")
+                logger.error(result.stderr)
                 return False
 
-            # Copy binaries
-            binaries = ["main", "stream", "server"]
-            for binary_name in binaries:
-                src_binary = repo_dir / binary_name
-                if self.whisper_installer._platform == "windows":
-                    src_binary = repo_dir / f"{binary_name}.exe"
-
-                if src_binary.exists():
-                    # Rename 'server' to 'whisper-server' for consistency
-                    if binary_name == "server":
-                        if self.whisper_installer._platform == "windows":
-                            dest_binary = self.bin_dir / "whisper-server.exe"
-                        else:
-                            dest_binary = self.bin_dir / "whisper-server"
-                    else:
-                        dest_binary = self.bin_dir / src_binary.name
-                    logger.debug(f"Copying {src_binary.name} to {dest_binary}")
+            # Copy binaries - whisper.cpp builds them in build/bin/ or root
+            binaries_to_copy = ["whisper-server", "main", "stream"]
+            copied_count = 0
+            
+            for binary_name in binaries_to_copy:
+                src_binary = None
+                
+                # Check build/bin/ directory first (CMake standard)
+                build_bin_path = build_dir / "bin" / binary_name
+                if build_bin_path.exists():
+                    src_binary = build_bin_path
+                # Fallback to build/ directory
+                elif (build_dir / binary_name).exists():
+                    src_binary = build_dir / binary_name
+                # Fallback to repo root
+                elif (repo_dir / binary_name).exists():
+                    src_binary = repo_dir / binary_name
+                
+                # Check for Windows .exe extension
+                if src_binary is None and self.whisper_installer._platform == "windows":
+                    exe_name = f"{binary_name}.exe"
+                    build_bin_path = build_dir / "bin" / exe_name
+                    if build_bin_path.exists():
+                        src_binary = build_bin_path
+                    elif (build_dir / exe_name).exists():
+                        src_binary = build_dir / exe_name
+                    elif (repo_dir / exe_name).exists():
+                        src_binary = repo_dir / exe_name
+                
+                if src_binary:
+                    dest_binary = self.bin_dir / src_binary.name
+                    logger.info(f"[info]Copying {src_binary.name} to {dest_binary}[/info]")
                     shutil.copy2(src_binary, dest_binary)
                     dest_binary.chmod(0o755)
+                    copied_count += 1
+                else:
+                    logger.warning(f"[warning]Binary not found: {binary_name}[/warning]")
+            
+            # Verify whisper-server was copied (required)
+            whisper_server_path = self.bin_dir / "whisper-server"
+            if self.whisper_installer._platform == "windows":
+                whisper_server_path = self.bin_dir / "whisper-server.exe"
+            
+            if not whisper_server_path.exists():
+                logger.error("[error]whisper-server binary not found after build[/error]")
+                logger.error(f"[error]Expected at: {whisper_server_path}[/error]")
+                logger.error(f"[error]Found {copied_count} binaries in {self.bin_dir}[/error]")
+                return False
 
             version = await self.whisper_installer.get_installed_version()
             logger.info(f"[success]Successfully built whisper.cpp {version}[/success]")
